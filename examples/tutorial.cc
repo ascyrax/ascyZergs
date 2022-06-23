@@ -11,46 +11,79 @@
 #define endl std::endl
 #define cout std::cout
 #define vector std::vector
+#define string std::string
+#define pair std::pair
+#define make_pair std::make_pair
 
 using namespace sc2;
 
-// global variables
-vector<const Unit *> idleLarvas, idleDrones, idleOverlords, idleHatcheries, idleQueens, idleOverseers, idleZergs;
-int gameLoop = 0; // Observation()->GetGameLoop();
 
-int minerals = 0; // Observation()->GetMinerals();
-int vespene = 0;  // Observation()->GetVespene();
-
-int foodCap = 0;     // Observation()->GetFoodCap();
-int foodUsed = 0;    // Observation()->GetFoodUsed();
-int foodArmy = 0;    // Observation()->GetFoodArmy();
-int foodWorkers = 0; // Observation()->GetFoodWorkers();
-
-int idleWorkerCnt = 0; // Observation()->GetIdleWorkerCount();
-int armyCnt = 0;       // Observation()->GetArmyCount();
-// bug. GetLarvaCnt always returns 0.
-// int larvaCnt =0;// Observation()->GetLarvaCount();
-int larvaCnt = 0; // idleLarvas.size();
-
-bool flagOverlord14 = true; // build an overlord at 14 supply
-
-int nActions = 0;
 
 class Bot : public Agent
 {
 public:
     vector<Point3D> expansions;
-    Point3D startLocation;
+    Point3D base1;
+    Point3D base2;
+    Point3D opBase1;// opponents starting base
+    Point3D opBase2;// opponents natural
+    vector<Point3D>bases;
+
+    //  vibe's silver macro build for zerg
+    const Unit* overlord1;
+    const Unit* overlord2;
+    Units overlords, drones;
+
+    vector<const Unit*> idleLarvas, idleDrones, idleOverlords, idleHatcheries, idleQueens, idleOverseers, idleZergs;
+    int gameLoop = 0; // Observation()->GetGameLoop();
+    int minerals = 0; // Observation()->GetMinerals();
+    int vespene = 0;  // Observation()->GetVespene();
+    int foodCap = 0;     // Observation()->GetFoodCap();
+    int foodUsed = 0;    // Observation()->GetFoodUsed();
+    int foodArmy = 0;    // Observation()->GetFoodArmy();
+    int foodWorkers = 0; // Observation()->GetFoodWorkers();
+    int idleWorkerCnt = 0; // Observation()->GetIdleWorkerCount();
+    int armyCnt = 0;       // Observation()->GetArmyCount();
+    // bug. GetLarvaCnt always returns 0.
+    // int larvaCnt =0;// Observation()->GetLarvaCount();
+    int larvaCnt = 0; // idleLarvas.size();
 
 
+    // variables till first 2 bases reach the saturation and safety roaches are built
+    bool vibeSilverOpeningFinished = false;
+    int hatcheryCnt = 1;
+    bool flagOverlord14 = true; // build an overlord at 14 supply
+    bool firstOverlordScoutSent = false;
+    bool overlord2Sent = false;
+    const Unit* naturalDrone;// drone used to build natural
+    
+    void getBases() {
+        base1 = Observation()->GetStartLocation();
+        vector<pair<double, int>>v;
+        for (int i = 0; i < expansions.size();i++) {
+            double dist = Distance2D(base1, expansions[i]);
+            v.push_back(make_pair(dist, i));
+        }
+
+        sort(v.begin(), v.end());
+        base2 = expansions[v[1].second];
+        opBase1 = expansions[v.back().second];
+        opBase2 = expansions[v[v.size() - 2].second];
+        for (auto el : v) 
+            bases.push_back(expansions[el.second]); 
+    }
     virtual void OnGameStart() final
     {
-        cout << "Hello ascyrax. Game started." << endl;
+        cout << endl << endl << "HELLO ASCYRAX. GAME STARTED." << endl << endl;
+
         cout << "checking and caching the possible expansions." << endl;
         expansions = search::CalculateExpansionLocations(Observation(), Query());
-        cout << "storing the startLocation too." << endl;
-        startLocation = Observation()->GetStartLocation();
+
+        // getting all the bases
+        cout << "getting all the bases." << endl;
+        getBases();
     }
+    
 
     virtual void OnUnitIdle(const Unit *unit)
     {
@@ -70,12 +103,12 @@ public:
 
     virtual void OnUnitCreated(const Unit *unit)
     {
-        cout << "A " << UnitTypeToName(unit->unit_type) << " was created." << endl;
+        cout << "A " << UnitTypeToName(unit->unit_type) << " was created during gameLoop: "<<gameLoop<<"." << endl;
     }
 
     virtual void OnGameEnd()
     {
-        cout << "Bye ascyrax. Game ended." << endl;
+        cout << endl << endl<< "BYE ASCYRAX. GAME ENDED." << endl << endl;
     }
 
     // coordinator.update() forwards the game by a certain amount of game steps
@@ -84,24 +117,21 @@ public:
 
     void trainDrone()
     {
-        const Unit *larva = Observation()->GetUnit(idleLarvas[0]->tag);
+        const Unit *larva = Observation()->GetUnit(idleLarvas.back()->tag);
         Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_DRONE);
-        idleLarvas.erase(idleLarvas.begin());
+        idleLarvas.erase(idleLarvas.end()-1);
         larvaCnt = idleLarvas.size();
-        nActions++;
         return;
     }
     void trainOverlord()
     {
-        const Unit *larva = Observation()->GetUnit(idleLarvas[0]->tag);
+        const Unit *larva = Observation()->GetUnit(idleLarvas.back()->tag);
         Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_OVERLORD);
-        idleLarvas.erase(idleLarvas.begin());
-        nActions++;
+        idleLarvas.erase(idleLarvas.end()-1);
         return;
     }
 
-    virtual void OnStep() final
-    {
+    void getValues() {
         gameLoop = Observation()->GetGameLoop();
 
         minerals = Observation()->GetMinerals();
@@ -117,6 +147,42 @@ public:
         // bug. GetLarvaCnt always returns 0.
         // larvaCnt = Observation()->GetLarvaCount();
         larvaCnt = idleLarvas.size();
+    }
+
+
+    // scouting functions
+    void scoutOpponentsNatural(const Unit* scoutingUnit) {
+        // assuming opponent's natural is the second farthest expansion from my starting expansion
+        Actions()->UnitCommand(scoutingUnit, ABILITY_ID::SMART,bases[bases.size()-1]);
+        firstOverlordScoutSent = true;
+    }
+    void scoutMyNatural(const Unit* scoutingUnit) {
+        Actions()->UnitCommand(scoutingUnit, ABILITY_ID::SMART, bases[1]);
+        // base2= bases[1].
+        overlord2Sent = true;
+    }
+    // building
+    void buildMyNatural(const Unit* buildingUnit) {
+        if (Query()->Placement(ABILITY_ID::BUILD_HATCHERY, bases[1], buildingUnit)) {
+            Actions()->UnitCommand(buildingUnit, ABILITY_ID::BUILD_HATCHERY, bases[1]);
+            hatcheryCnt++;
+        }
+    }
+
+    void vibeSilverOpening() {
+
+       overlords = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_OVERLORD));
+
+        // send scouting to natural
+        if (!firstOverlordScoutSent && overlords.size()>=1)
+        {
+            overlord1 = overlords[0];
+            scoutOpponentsNatural(overlord1);
+        }
+        if (!overlord2Sent && overlords.size()>=2) {
+            overlord2 = overlords[1];
+            scoutMyNatural(overlord2);
+        }
 
         if (foodCap == 14 && foodUsed == 12)
         {
@@ -144,26 +210,29 @@ public:
                 trainDrone();
             }
         }
-
-        // get the natural
-        if (minerals >= 200)
+        // move towards to the natural at 200 mineral mark
+        if (minerals >= 200 && hatcheryCnt==1)
         {
             // get a drone to build the hatchery at natural
-            Units drones = Observation()->GetUnits(Unit::Alliance::Self,IsUnit(UNIT_TYPEID::ZERG_DRONE));
-            Point3D natural;
-            double minDist = 1e9;
-            for (auto el : expansions) {
-                if (Query()->Placement(ABILITY_ID::BUILD_HATCHERY, el, drones[0])) {
-                    float dist = Distance2D(startLocation, el);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        natural = el;
-                    }
-                }
-            }
-            Actions()->UnitCommand(drones[0], ABILITY_ID::BUILD_HATCHERY, natural);
+            drones = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_DRONE));
+            naturalDrone = drones[0];
+            scoutMyNatural(naturalDrone);
         }
+        // build the natural at 300 mineral mark
+        if (minerals >= 300 && hatcheryCnt == 1) {
+            buildMyNatural(naturalDrone);
+            vibeSilverOpeningFinished = true;
+        }
+        
     }
+
+    virtual void OnStep() final
+    {
+        getValues();
+        if (!vibeSilverOpeningFinished)
+            vibeSilverOpening();
+    }
+
 };
 
 int main(int argc, char *argv[])
