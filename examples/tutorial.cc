@@ -10,11 +10,12 @@
 
 #define endl std::endl
 #define cout std::cout
+#define vector std::vector
 
 using namespace sc2;
 
 // global variables
-std::vector<const Unit *> idleLarvas, idleDrones, idleOverlords, idleHatcheries, idleQueens, idleOverseers, idleZergs;
+vector<const Unit *> idleLarvas, idleDrones, idleOverlords, idleHatcheries, idleQueens, idleOverseers, idleZergs;
 int gameLoop = 0; // Observation()->GetGameLoop();
 
 int minerals = 0; // Observation()->GetMinerals();
@@ -38,9 +39,17 @@ int nActions = 0;
 class Bot : public Agent
 {
 public:
+    vector<Point3D> expansions;
+    Point3D startLocation;
+
+
     virtual void OnGameStart() final
     {
         cout << "Hello ascyrax. Game started." << endl;
+        cout << "checking and caching the possible expansions." << endl;
+        expansions = search::CalculateExpansionLocations(Observation(), Query());
+        cout << "storing the startLocation too." << endl;
+        startLocation = Observation()->GetStartLocation();
     }
 
     virtual void OnUnitIdle(const Unit *unit)
@@ -90,16 +99,7 @@ public:
         nActions++;
         return;
     }
-    bool CanPathToLocation(const sc2::Unit *unit, sc2::Point2D &target_pos)
-    {
-        // Send a pathing query from the unit to that point. Can also query from point to point,
-        // but using a unit tag wherever possible will be more accurate.
-        // Note: This query must communicate with the game to get a result which affects performance.
-        // Ideally batch up the queries (using PathingDistanceBatched) and do many at once.
-        float distance = Query()->PathingDistance(unit, target_pos);
 
-        return distance > 0.1f;
-    }
     virtual void OnStep() final
     {
         gameLoop = Observation()->GetGameLoop();
@@ -117,15 +117,6 @@ public:
         // bug. GetLarvaCnt always returns 0.
         // larvaCnt = Observation()->GetLarvaCount();
         larvaCnt = idleLarvas.size();
-
-        /*   if(minerals%50==0){
-               cout << gameLoop << " " << minerals << " " << vespene << " " << endl;
-               cout << foodCap << " " << foodUsed << " " << foodArmy << " " << foodWorkers << endl;
-               cout << idleWorkerCnt << " " << armyCnt << " " << larvaCnt << endl;
-               cout << "idleLarvas" << endl;
-               for (auto el : idleLarvas)cout << UnitTypeToName(el->unit_type)
-                   << " , unit tag = "<<el->tag<< endl;
-           }*/
 
         if (foodCap == 14 && foodUsed == 12)
         {
@@ -158,20 +149,19 @@ public:
         if (minerals >= 200)
         {
             // get a drone to build the hatchery at natural
-            Units drones = Observation()->GetUnits(IsUnit(UNIT_TYPEID::ZERG_DRONE));
-            for (const Unit *el : drones)
-            {
-                // if (!IsCarryingMinerals) { // maybe this line is not working
-                sc2::Point2D move_target = sc2::FindRandomLocation(Observation()->GetGameInfo());
-                if (!CanPathToLocation(el, move_target))
-                {
-                    return;
+            Units drones = Observation()->GetUnits(Unit::Alliance::Self,IsUnit(UNIT_TYPEID::ZERG_DRONE));
+            Point3D natural;
+            double minDist = 1e9;
+            for (auto el : expansions) {
+                if (Query()->Placement(ABILITY_ID::BUILD_HATCHERY, el, drones[0])) {
+                    float dist = Distance2D(startLocation, el);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        natural = el;
+                    }
                 }
-                Actions()->UnitCommand(el, sc2::ABILITY_ID::SMART, move_target);
-                break;
-                //}
             }
-            // const Unit* drone = GetRandomEntry(drones);
+            Actions()->UnitCommand(drones[0], ABILITY_ID::BUILD_HATCHERY, natural);
         }
     }
 };
@@ -194,11 +184,9 @@ int main(int argc, char *argv[])
     coordinator.LaunchStarcraft();
     coordinator.StartGame(sc2::kMapBelShirVestigeLE);
 
-    int updateCnt = 0;
+
     while (coordinator.Update())
     {
-        ++updateCnt;
-        // SleepFor(30);
         SleepFor(20);
     }
     return 0;
