@@ -23,6 +23,7 @@ class Bot : public Agent
 {
 public:
     vector<Point3D> expansions;
+    Point3D stagingLocation;
     Point3D base1;
     Point3D base2;
     Point3D opBase1;// opponents starting base
@@ -56,11 +57,19 @@ public:
     bool firstOverlordScoutSent = false;
     bool overlord2Sent = false;
     const Unit* naturalDrone;// drone used to build natural
-    
+    int roachCnt = 0;
+
+    const Unit* scoutDrone;
     void getBases() {
         base1 = Observation()->GetStartLocation();
+
+        cout << "startLocation" << endl;
+        cout << base1.x << " " << base1.y << " " << base1.z << endl;
+
         vector<pair<double, int>>v;
         for (int i = 0; i < expansions.size();i++) {
+            cout << "expansion [" << i << "]:     " << endl;
+            cout << expansions[i].x << " " << expansions[i].y << " " << expansions[i].z << endl;
             double dist = Distance2D(base1, expansions[i]);
             v.push_back(make_pair(dist, i));
         }
@@ -70,7 +79,11 @@ public:
         opBase1 = expansions[v.back().second];
         opBase2 = expansions[v[v.size() - 2].second];
         for (auto el : v) 
-            bases.push_back(expansions[el.second]); 
+            bases.push_back(expansions[el.second]);
+        cout<<"bases"<<endl;
+        for (int i = 0; i < bases.size(); i++) {
+            cout << bases[i].x << " " << bases[i].y << " " << bases[i].z << endl;
+        }
     }
     virtual void OnGameStart() final
     {
@@ -82,6 +95,10 @@ public:
         // getting all the bases
         cout << "getting all the bases." << endl;
         getBases();
+
+        Units drones = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_DRONE));
+        scoutDrone = drones[1];
+        cout << "scoutDrone's STARTING POSITION: " << scoutDrone->pos.x << " " << scoutDrone->pos.y << " " << scoutDrone->pos.z << endl;
     }
     
 
@@ -115,20 +132,22 @@ public:
     // after a step is completed, an observation is received => client events are run
     // Our OnStep function is run after the client events.
 
-    void trainDrone()
+    bool trainDrone()
     {
+        if (idleLarvas.size() == 0)return false;
         const Unit *larva = Observation()->GetUnit(idleLarvas.back()->tag);
         Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_DRONE);
         idleLarvas.erase(idleLarvas.end()-1);
         larvaCnt = idleLarvas.size();
-        return;
+        return true;
     }
-    void trainOverlord()
+    bool trainOverlord()
     {
+        if (idleLarvas.size() == 0)return false;
         const Unit *larva = Observation()->GetUnit(idleLarvas.back()->tag);
         Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_OVERLORD);
         idleLarvas.erase(idleLarvas.end()-1);
-        return;
+        return true;
     }
 
     void getValues() {
@@ -153,6 +172,9 @@ public:
     // scouting functions
     void scoutOpponentsNatural(const Unit* scoutingUnit) {
         // assuming opponent's natural is the second farthest expansion from my starting expansion
+        cout << "bases.size: " << bases.size() << endl;
+        opBase2 = bases[bases.size() - 1];
+        cout << "overlord being sent to opponent's main base" << opBase2.x << " " << opBase2.y << " " << opBase2.z << endl;
         Actions()->UnitCommand(scoutingUnit, ABILITY_ID::SMART,bases[bases.size()-1]);
         firstOverlordScoutSent = true;
     }
@@ -164,7 +186,7 @@ public:
     // building
     void buildMyNatural(const Unit* buildingUnit) {
         if (Query()->Placement(ABILITY_ID::BUILD_HATCHERY, bases[1], buildingUnit)) {
-            Actions()->UnitCommand(buildingUnit, ABILITY_ID::BUILD_HATCHERY, bases[1]);
+            Actions()->UnitCommand(buildingUnit, ABILITY_ID::BUILD_HATCHERY, bases[0]);
             hatcheryCnt++;
         }
     }
@@ -180,7 +202,10 @@ public:
             scoutOpponentsNatural(overlord1);
         }
         if (!overlord2Sent && overlords.size()>=2) {
-            overlord2 = overlords[1];
+            for (auto el : overlords) {
+                if (el == overlord1)continue;
+                else { overlord2 = el; break; }
+            }
             scoutMyNatural(overlord2);
         }
 
@@ -221,16 +246,39 @@ public:
         // build the natural at 300 mineral mark
         if (minerals >= 300 && hatcheryCnt == 1) {
             buildMyNatural(naturalDrone);
+        }
+        if(gameLoop%100==0)
+        cout << "hatcheryCnt: " << hatcheryCnt << endl;
+        if (hatcheryCnt == 1) {
+            if (minerals >= 350 && foodUsed <= 18) {
+                trainDrone();
+            }
+        }
+        else {
+            if (minerals >= 50 && foodUsed < 18) {
+                trainDrone();
+            }
+        }
+        if (roachCnt == 8) {
             vibeSilverOpeningFinished = true;
         }
         
     }
-
+    int ptr = 0;
+    void findBases() {
+        Actions()->UnitCommand(scoutDrone,ABILITY_ID::SMART, bases[ptr]);
+        if (Distance2D(scoutDrone->pos, bases[ptr])<1.0) {
+            cout << "scoutDrone REACHED the base[" << ptr << "]" << " with location: " << bases[ptr].x << " " << bases[ptr].y << " " << bases[ptr].z << endl;
+            ptr++;
+            cout << "scoutDrone SENT to base[" << ptr << "]" << " with location: " << bases[ptr].x << " " << bases[ptr].y << " " << bases[ptr].z << endl;
+        }
+    }
     virtual void OnStep() final
     {
         getValues();
-        if (!vibeSilverOpeningFinished)
-            vibeSilverOpening();
+        findBases();
+ /*       if (!vibeSilverOpeningFinished)
+            vibeSilverOpening();*/
     }
 
 };
@@ -239,24 +287,15 @@ int main(int argc, char *argv[])
 {
     Coordinator coordinator;
     coordinator.SetStepSize(1);
-    // coordinator.LoadSettings(argc, argv);
     if (!coordinator.LoadSettings(argc, argv))
-    {
         return 1;
-    }
-    // coordinator.SetRealtime(true);
-
     Bot bot;
     coordinator.SetParticipants({CreateParticipant(Race::Zerg, &bot),
                                  CreateComputer(Race::Random, Difficulty::CheatInsane, AIBuild::Rush)});
-
     coordinator.LaunchStarcraft();
     coordinator.StartGame(sc2::kMapBelShirVestigeLE);
 
-
     while (coordinator.Update())
-    {
-        SleepFor(20);
-    }
+        SleepFor(10);
     return 0;
 }
