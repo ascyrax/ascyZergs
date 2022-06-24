@@ -22,132 +22,101 @@ using namespace sc2;
 class Bot : public Agent
 {
 public:
+
+    // GAME VARIABLES
+
+    // LOCATION AND BASES
     vector<Point3D> expansions;
-    Point3D stagingLocation;
-    Point3D base1;
-    Point3D base2;
-    Point3D opBase1;// opponents starting base
-    Point3D opBase2;// opponents natural
     vector<Point3D>bases;
+    int nBases = 0;
+    Point3D base1, base2, base3, base4, base5, base6;
+    Point3D opBase1, opBase2, opBase3, opBase4, opBase5, opBase6;// opponents starting base
+    Point3D stagingLocation; // unused for now
 
-    //  vibe's silver macro build for zerg
-    const Unit* overlord1;
-    const Unit* overlord2;
-    Units overlords, drones;
+    // UNITS AND BUILDINGS AND RESOURCES
+    Units overlords, drones, hatcheries, larvas, eggs, lairs, hives, evoChambers
+        , spawningPools, roachWarrens, hydraliskDens, extractors;
+    int gameLoop = 0;
+    int minerals = 0, vespene = 0;
+    int maxSupply = 0, currentSupply = 0, armySupply = 0, armyCnt = 0;
+    int extractorCnt = 0, spawningPoolCnt = 0, hatcheryCnt = 0, lairCnt = 0, hiveCnt = 0,
+        roachWarrenCnt=0, hydraliskDenCnt=0,evoChamberCnt=0;
+    int overlordCnt = 0, droneCnt = 0, larvaCnt = 0, eggCnt = 0;
 
-    vector<const Unit*> idleLarvas, idleDrones, idleOverlords, idleHatcheries, idleQueens, idleOverseers, idleZergs;
-    int gameLoop = 0; // Observation()->GetGameLoop();
-    int minerals = 0; // Observation()->GetMinerals();
-    int vespene = 0;  // Observation()->GetVespene();
-    int foodCap = 0;     // Observation()->GetFoodCap();
-    int foodUsed = 0;    // Observation()->GetFoodUsed();
-    int foodArmy = 0;    // Observation()->GetFoodArmy();
-    int foodWorkers = 0; // Observation()->GetFoodWorkers();
-    int idleWorkerCnt = 0; // Observation()->GetIdleWorkerCount();
-    int armyCnt = 0;       // Observation()->GetArmyCount();
-    // bug. GetLarvaCnt always returns 0.
-    // int larvaCnt =0;// Observation()->GetLarvaCount();
-    int larvaCnt = 0; // idleLarvas.size();
+    // MISCELLANEOUS
+    vector<UpgradeID> upgrades;
 
-
-    // variables till first 2 bases reach the saturation and safety roaches are built
-    bool vibeSilverOpeningFinished = false;
-    int hatcheryCnt = 1;
-    bool flagOverlord14 = true; // build an overlord at 14 supply
+    // EARLY_A
+    bool overlord14Trained = false; // build an overlord at 14 supply
     bool firstOverlordScoutSent = false;
     bool overlord2Sent = false;
     const Unit* naturalDrone;// drone used to build natural
+    bool naturalDroneSent = false; // whether natural drone is sent towards the natural at 200 mineral mark or not.
     int roachCnt = 0;
+    const Unit* overlord1;
+    const Unit* overlord2;
 
-    const Unit* scoutDrone;
-    void getBases() {
-        base1 = Observation()->GetStartLocation();
+    // EARLY_B
 
-        cout << "startLocation" << endl;
-        cout << base1.x << " " << base1.y << " " << base1.z << endl;
+    // EARLY_C
 
-        vector<pair<double, int>>v;
-        for (int i = 0; i < expansions.size();i++) {
-            cout << "expansion [" << i << "]:     " << endl;
-            cout << expansions[i].x << " " << expansions[i].y << " " << expansions[i].z << endl;
-            double dist = Distance2D(base1, expansions[i]);
-            v.push_back(make_pair(dist, i));
-        }
 
-        sort(v.begin(), v.end());
-        base2 = expansions[v[1].second];
-        opBase1 = expansions[v.back().second];
-        opBase2 = expansions[v[v.size() - 2].second];
-        for (auto el : v) 
-            bases.push_back(expansions[el.second]);
-        cout<<"bases"<<endl;
-        for (int i = 0; i < bases.size(); i++) {
-            cout << bases[i].x << " " << bases[i].y << " " << bases[i].z << endl;
-        }
-    }
+
     virtual void OnGameStart() final
     {
-        cout << endl << endl << "HELLO ASCYRAX. GAME STARTED." << endl << endl;
+        cout << endl << endl << "HELLO ASCYRAX." << endl << endl;
 
-        cout << "checking and caching the possible expansions." << endl;
+        //cout << "checking and caching the possible expansions." << endl;
         expansions = search::CalculateExpansionLocations(Observation(), Query());
 
         // getting all the bases
-        cout << "getting all the bases." << endl;
+        //cout << "getting all the bases." << endl;
         getBases();
-
-        Units drones = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_DRONE));
-        scoutDrone = drones[1];
-        cout << "scoutDrone's STARTING POSITION: " << scoutDrone->pos.x << " " << scoutDrone->pos.y << " " << scoutDrone->pos.z << endl;
+        getValues();
     }
-    
 
     virtual void OnUnitIdle(const Unit *unit)
     {
-        if (unit->unit_type == UNIT_TYPEID::ZERG_LARVA)
-            idleLarvas.push_back(unit);
-        else if (unit->unit_type == UNIT_TYPEID::ZERG_DRONE)
-            idleDrones.push_back(unit);
-        else if (unit->unit_type == UNIT_TYPEID::ZERG_OVERLORD)
-            idleOverlords.push_back(unit);
-        else if (unit->unit_type == UNIT_TYPEID::ZERG_HATCHERY)
-            idleHatcheries.push_back(unit);
-        else if (unit->unit_type == UNIT_TYPEID::ZERG_QUEEN)
-            idleQueens.push_back(unit);
-        else if (unit->unit_type == UNIT_TYPEID::ZERG_OVERSEER)
-            idleOverseers.push_back(unit);
+        ;// do nothing for now
     }
 
     virtual void OnUnitCreated(const Unit *unit)
     {
-        cout << "A " << UnitTypeToName(unit->unit_type) << " was created during gameLoop: "<<gameLoop<<"." << endl;
+        //cout << "A " << UnitTypeToName(unit->unit_type) << " was created during gameLoop: "<<gameLoop<<"." << endl;
     }
 
-    virtual void OnGameEnd()
-    {
-        cout << endl << endl<< "BYE ASCYRAX. GAME ENDED." << endl << endl;
-    }
 
     // coordinator.update() forwards the game by a certain amount of game steps
     // after a step is completed, an observation is received => client events are run
     // Our OnStep function is run after the client events.
 
-    bool trainDrone()
-    {
-        if (idleLarvas.size() == 0)return false;
-        const Unit *larva = Observation()->GetUnit(idleLarvas.back()->tag);
-        Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_DRONE);
-        idleLarvas.erase(idleLarvas.end()-1);
-        larvaCnt = idleLarvas.size();
-        return true;
-    }
-    bool trainOverlord()
-    {
-        if (idleLarvas.size() == 0)return false;
-        const Unit *larva = Observation()->GetUnit(idleLarvas.back()->tag);
-        Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_OVERLORD);
-        idleLarvas.erase(idleLarvas.end()-1);
-        return true;
+
+    void getBases() {
+        base1 = Observation()->GetStartLocation();
+
+        vector<pair<double, int>>v;
+        for (int i = 0; i < expansions.size(); i++) {
+            if (expansions[i].x == 0 && expansions[i].y == 0)continue;
+            double dist = Distance2D(base1, expansions[i]);
+            v.push_back(make_pair(dist, i));
+        }
+
+        sort(v.begin(), v.end());
+
+        for (auto el : v)
+            bases.push_back(expansions[el.second]);
+        nBases = bases.size();
+        base2 = bases[0];
+        base3 = bases[1];
+        base4 = bases[2];
+        base5 = bases[3];
+        base6 = bases[4];
+        opBase1 = bases[nBases - 1];
+        opBase2 = bases[nBases - 2];
+        opBase3 = bases[nBases - 3];
+        opBase4 = bases[nBases - 4];
+        opBase5 = bases[nBases - 5];
+        opBase6 = bases[nBases - 6];
     }
 
     void getValues() {
@@ -156,129 +125,319 @@ public:
         minerals = Observation()->GetMinerals();
         vespene = Observation()->GetVespene();
 
-        foodCap = Observation()->GetFoodCap();
-        foodUsed = Observation()->GetFoodUsed();
-        foodArmy = Observation()->GetFoodArmy();
-        foodWorkers = Observation()->GetFoodWorkers();
-
-        idleWorkerCnt = Observation()->GetIdleWorkerCount();
+        maxSupply = Observation()->GetFoodCap();
+        currentSupply = Observation()->GetFoodUsed();
+        armySupply = Observation()->GetFoodArmy();
         armyCnt = Observation()->GetArmyCount();
-        // bug. GetLarvaCnt always returns 0.
-        // larvaCnt = Observation()->GetLarvaCount();
-        larvaCnt = idleLarvas.size();
+
+
+
+        overlords = getUnits(UNIT_TYPEID::ZERG_OVERLORD);
+        drones = getUnits(UNIT_TYPEID::ZERG_DRONE);
+        hatcheries = getUnits(UNIT_TYPEID::ZERG_HATCHERY);
+        larvas = getUnits(UNIT_TYPEID::ZERG_LARVA);
+        eggs = getUnits(UNIT_TYPEID::ZERG_EGG);
+
+        droneCnt = drones.size();
+        overlordCnt = overlords.size();
+        hatcheryCnt = hatcheries.size();
+        larvaCnt = larvas.size();
+        eggCnt = eggs.size();
+
+        // conting the drones which are still egg
+        for (auto el : eggs) {
+            if (!el->orders.empty()) {
+                if (el->orders.front().ability_id == ABILITY_ID::TRAIN_DRONE)
+                    droneCnt++;
+            }
+        }
+
+        // counting the overlords which are still egg
+        for (auto el : eggs) {
+            if (!el->orders.empty()) {
+                if (el->orders.front().ability_id == ABILITY_ID::TRAIN_OVERLORD)
+                    overlordCnt++;
+            }
+        }
+
+        upgrades = Observation()->GetUpgrades();
+        spawningPools = getUnits(UNIT_TYPEID::ZERG_SPAWNINGPOOL);
+        spawningPoolCnt = spawningPools.size();
+        roachWarrens = getUnits(UNIT_TYPEID::ZERG_ROACHWARREN);
+        roachWarrenCnt = roachWarrens.size();
+        evoChambers = getUnits(UNIT_TYPEID::ZERG_EVOLUTIONCHAMBER);
+        evoChamberCnt = evoChambers.size();
+        hydraliskDens = getUnits(UNIT_TYPEID::ZERG_HYDRALISKDEN);
+        hydraliskDenCnt = hydraliskDens.size();
+        extractors = getUnits(UNIT_TYPEID::ZERG_EXTRACTOR);
+        extractorCnt = extractors.size();
+
+    }
+
+    Units getUnits(UNIT_TYPEID unitType) {
+        return Observation()->GetUnits(Unit::Alliance::Self, IsUnit(unitType));
     }
 
 
-    // scouting functions
+    bool trainDrone()
+    {
+        if (larvaCnt == 0)return false;
+        const Unit* larva = larvas.back();
+        Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_DRONE);
+        larvas.erase(larvas.end() - 1);
+        larvaCnt = larvas.size();
+        return true;
+    }
+
+    bool trainOverlord()
+    {
+        if (larvaCnt == 0)return false;
+        const Unit* larva = larvas.back();
+        Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_OVERLORD);
+        larvas.erase(larvas.end() - 1);
+        return true;
+    }
+
+    bool TryBuildStructure(AbilityID ability_type_for_structure, UnitTypeID unit_type, Point2D location, bool isExpansion = false) {
+        const ObservationInterface* observation = Observation();
+        Units workers = observation->GetUnits(Unit::Alliance::Self, IsUnit(unit_type));
+
+        //if we have no workers Don't build
+        if (workers.empty()) {
+            return false;
+        }
+
+        // Check to see if there is already a worker heading out to build it
+        for (const auto& worker : workers) {
+            for (const auto& order : worker->orders) {
+                if (order.ability_id == ability_type_for_structure) {
+                    return false;
+                }
+            }
+        }
+
+        // If no worker is already building one, get a random worker to build one
+        const Unit* unit = GetRandomEntry(workers);
+
+        // Check to see if unit can make it there
+        if (Query()->PathingDistance(unit, location) < 0.1f) {
+            return false;
+        }
+        if (!isExpansion) {
+            for (const auto& expansion : bases) {
+                if (Distance2D(location, Point2D(expansion.x, expansion.y)) < 7) {
+                    return false;
+                }
+            }
+        }
+        // Check to see if unit can build there
+        if (Query()->Placement(ability_type_for_structure, location)) {
+            Actions()->UnitCommand(unit, ability_type_for_structure, location);
+            return true;
+        }
+        return false;
+
+    }
+
+    bool TryBuildOnCreep(AbilityID ability_type_for_structure, UnitTypeID unit_type) {
+        float rx = GetRandomScalar();
+        float ry = GetRandomScalar();
+        Point2D build_location = Point2D(base1.x + rx * 15, base1.y + ry * 15);
+
+        if (Observation()->HasCreep(build_location)) {
+            return TryBuildStructure(ability_type_for_structure, unit_type, build_location, false);// false => this is not an expansion
+        }
+        return false;
+    }
+
+
+
+    // EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....
+    // SCOUTING
     void scoutOpponentsNatural(const Unit* scoutingUnit) {
         // assuming opponent's natural is the second farthest expansion from my starting expansion
-        cout << "bases.size: " << bases.size() << endl;
-        opBase2 = bases[bases.size() - 1];
-        cout << "overlord being sent to opponent's main base" << opBase2.x << " " << opBase2.y << " " << opBase2.z << endl;
-        Actions()->UnitCommand(scoutingUnit, ABILITY_ID::SMART,bases[bases.size()-1]);
-        firstOverlordScoutSent = true;
+        cout << "1st overlord sent to opponent's natural: " << opBase2.x << " " << opBase2.y << " " << opBase2.z << endl;
+        Actions()->UnitCommand(scoutingUnit, ABILITY_ID::SMART,opBase2);
     }
+
     void scoutMyNatural(const Unit* scoutingUnit) {
-        Actions()->UnitCommand(scoutingUnit, ABILITY_ID::SMART, bases[1]);
-        // base2= bases[1].
-        overlord2Sent = true;
+        Actions()->UnitCommand(scoutingUnit, ABILITY_ID::SMART, bases[0]);
     }
-    // building
-    void buildMyNatural(const Unit* buildingUnit) {
+
+    // BUILDING
+    
+    bool buildMyNatural(const Unit* buildingUnit) {
         if (Query()->Placement(ABILITY_ID::BUILD_HATCHERY, bases[1], buildingUnit)) {
             Actions()->UnitCommand(buildingUnit, ABILITY_ID::BUILD_HATCHERY, bases[0]);
-            hatcheryCnt++;
+            return true;
         }
+        return false;
     }
 
-    void vibeSilverOpening() {
+    bool buildSpawningPool(const Unit* buildingUnit, Point3D hatcheryLocation) {
+        return TryBuildOnCreep(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_DRONE);
+    }
 
-       overlords = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_OVERLORD));
+    bool buildVespeneGeyser(Point3D targetHatcheryLocation) {
+        if (drones.size() == 0)return false;
+        // return back if a drone has already been given the order
+        for (auto drone : drones) {
+            if (!drone->orders.empty()) {
+                for (auto order : drone->orders) {
+                    if (order.ability_id == ABILITY_ID::BUILD_EXTRACTOR) {
+                        return false; // since order already given.
+                    }
+                }
+            }
+        }
+        const Unit* buildingUnit = GetRandomEntry(drones);
+        // find the closest geyser(neutral unit) to the target base and build on it.
+        Units geysers = Observation()->GetUnits(Unit::Alliance::Neutral, IsGeyser());
 
-        // send scouting to natural
+        if (geysers.size() == 0)return false;
+
+        double minDist = 1e9;
+        const Unit* closestVespeneGeyser;
+        for (const Unit* el : geysers) {
+            if (Query()->Placement(ABILITY_ID::BUILD_EXTRACTOR, el->pos, buildingUnit)) {
+                double dist = Distance2D(el->pos, targetHatcheryLocation);
+                if (dist < minDist) {
+                    closestVespeneGeyser = el;
+                }
+            }
+        }
+        if (Query()->Placement(ABILITY_ID::BUILD_EXTRACTOR, closestVespeneGeyser->pos,buildingUnit)) {
+            Actions()->UnitCommand(buildingUnit, ABILITY_ID::BUILD_EXTRACTOR, closestVespeneGeyser);
+            return true;
+        }
+        return false;
+    }
+
+    // EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....EARLY_A.....
+
+    void earlyA() {
+        
+        //cout << "droneCnt:  " << droneCnt << endl;
+        // send 1st overlord as scout to opponent's natural
         if (!firstOverlordScoutSent && overlords.size()>=1)
         {
             overlord1 = overlords[0];
             scoutOpponentsNatural(overlord1);
+            firstOverlordScoutSent = true;
         }
-        if (!overlord2Sent && overlords.size()>=2) {
+        // send 2nd overlord to my natural
+        if (!overlord2Sent && overlords.size()==2) {
             for (auto el : overlords) {
                 if (el == overlord1)continue;
                 else { overlord2 = el; break; }
             }
             scoutMyNatural(overlord2);
+            overlord2Sent = true;
         }
 
-        if (foodCap == 14 && foodUsed == 12)
-        {
-            // get a larva
-            if (larvaCnt && minerals >= 50)
-                trainDrone();
-        }
-        if (foodCap == 14 && foodUsed == 13)
-        {
-            // get a larva
-            if (larvaCnt && flagOverlord14 && minerals >= 100)
-            {
-                trainOverlord();
-                flagOverlord14 = false;
-            }
-            if (flagOverlord14 == false && minerals >= 50)
-                trainDrone();
-        }
-        if (foodCap == 22 && foodUsed == 14)
-        {
-            // get two larvas
-            if (larvaCnt >= 2 && minerals >= 100)
-            {
-                trainDrone();
-                trainDrone();
-            }
-        }
-        // move towards to the natural at 200 mineral mark
-        if (minerals >= 200 && hatcheryCnt==1)
-        {
-            // get a drone to build the hatchery at natural
-            drones = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_DRONE));
-            naturalDrone = drones[0];
-            scoutMyNatural(naturalDrone);
-        }
-        // build the natural at 300 mineral mark
-        if (minerals >= 300 && hatcheryCnt == 1) {
-            buildMyNatural(naturalDrone);
-        }
-        if(gameLoop%100==0)
-        cout << "hatcheryCnt: " << hatcheryCnt << endl;
+
         if (hatcheryCnt == 1) {
-            if (minerals >= 350 && foodUsed <= 18) {
-                trainDrone();
+            // build drone as soon as the game starts
+            if (droneCnt < 13)
+            {
+                if (minerals >= 50)
+                    trainDrone();
+                return;
+            }
+
+            // build an overlord next
+            if (overlordCnt == 1)
+            {
+                // get a larva
+                if (minerals >= 100)
+                    trainOverlord();
+                return;
+            }
+            if (overlordCnt == 2 && maxSupply == 14 && droneCnt==13) {
+                if (minerals >= 50)
+                    trainDrone();
+            }
+
+            // draw drones till 16
+            if (overlordCnt == 2  && maxSupply==22 && droneCnt < 16) {
+                if (minerals >= 50)
+                    trainDrone();
+                return;
+            }
+
+            // expansion time
+
+            // move towards to the natural at 200 mineral mark
+            if (droneCnt==16 && minerals >= 160 && !naturalDroneSent)
+            {
+                // get a drone to build the hatchery at natural
+                naturalDrone = drones[0];
+                scoutMyNatural(naturalDrone);
+                naturalDroneSent = true;
+                return;
+            }
+            // build the natural at 300 mineral mark
+            if (minerals >= 300) {
+                buildMyNatural(naturalDrone);
+                return;
             }
         }
-        else {
-            if (minerals >= 50 && foodUsed < 18) {
-                trainDrone();
+        else if (hatcheryCnt == 2) {
+            if (droneCnt < 18) {
+                if (minerals >= 50)
+                    trainDrone();
+                return;
             }
-        }
-        if (roachCnt == 8) {
-            vibeSilverOpeningFinished = true;
+
+            // hatchery==2 && droneCnt==18
+            if (spawningPoolCnt == 0) {
+                if (minerals >= 150 && buildSpawningPool(drones[0], base1));
+                return;
+            }
+
+            if (spawningPoolCnt == 1 && droneCnt < 20) {
+                if (minerals >= 50)
+                    trainDrone();
+                return;
+            }
+
+            if (extractorCnt == 0) {
+                if (minerals >= 30 && buildVespeneGeyser(base1));
+                return;
+            }
         }
         
+
+        // EARLY_A PHASE OF VIBE'S ZERG BUILD ENDS.
     }
-    int ptr = 0;
-    void findBases() {
-        Actions()->UnitCommand(scoutDrone,ABILITY_ID::SMART, bases[ptr]);
-        if (Distance2D(scoutDrone->pos, bases[ptr])<1.0) {
-            cout << "scoutDrone REACHED the base[" << ptr << "]" << " with location: " << bases[ptr].x << " " << bases[ptr].y << " " << bases[ptr].z << endl;
-            ptr++;
-            cout << "scoutDrone SENT to base[" << ptr << "]" << " with location: " << bases[ptr].x << " " << bases[ptr].y << " " << bases[ptr].z << endl;
-        }
+
+    void earlyB() {
+
     }
+
+    void earlyC() {
+
+    }
+    
     virtual void OnStep() final
     {
         getValues();
-        findBases();
- /*       if (!vibeSilverOpeningFinished)
-            vibeSilverOpening();*/
+
+        if (extractorCnt < 1) {
+            earlyA();
+        }
+        else if(hatcheryCnt<3 && roachCnt<6){
+            earlyB();
+        }
+        else if (hatcheryCnt < 4 && maxSupply < 120 && droneCnt < 120) {
+            earlyC();
+        }
+        
+    }
+
+    virtual void OnGameEnd()
+    {
+        cout << endl << endl << "BYE ASCYRAX." << endl << endl;
     }
 
 };
@@ -295,7 +454,20 @@ int main(int argc, char *argv[])
     coordinator.LaunchStarcraft();
     coordinator.StartGame(sc2::kMapBelShirVestigeLE);
 
+
+
     while (coordinator.Update())
-        SleepFor(10);
+        SleepFor(5);
     return 0;
 }
+
+
+
+// CONCEPTS
+// droneCnt = dronesPresent + eggs(which are morphing into drones)
+// hatcheryCnt = already built + currently building hatcheries
+// GetUnits(Unit::Alliance::Self,IsUnit(UNIT_TYPEID::ZERG_DRONES)) -> will not give the eggs which are morphing into drones. It returns only the already built drones.
+
+// BUGS
+//  //// bug. GetLarvaCnt always returns 0.
+        // larvaCnt = Observation()->GetLarvaCount();
