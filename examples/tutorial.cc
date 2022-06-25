@@ -58,8 +58,13 @@ public:
     int spineCrawlerCnt = 0, sporeCrawlerCnt = 0, lairCnt = 0, hiveCnt = 0,
         roachWarrenCnt = 0, hydraliskDenCnt = 0, evoChamberCnt = 0, queenCnt = 0;
     Units spineCrawlers, sporeCrawlers, roachWarrens, hydraliskDens, lairs, hives, evoChambers, queens;
+    bool zergTimingAttackSent = false, roachTimingAttack1Sent = false, roachHydraAttack1Sent = false;
+
 
     // EARLY_C
+    Units injectorQueens,creepQueens;
+    int injectorQueenCnt = 0,creepQueenCnt=0;
+
 
 
 
@@ -189,13 +194,20 @@ public:
 
         queens = getUnits(UNIT_TYPEID::ZERG_QUEEN);
         queenCnt = queens.size();
-
         // townhall is training queens -> queenCnt++ 
-        Units townHalls = 
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+        for (auto& el : townHalls) {
+            if (!el->orders.empty()) {
+                if (el->orders.front().ability_id == ABILITY_ID::TRAIN_QUEEN) {
+                    queenCnt++;
+                }
+            }
+        }
 
 
 
         // EARLY_C
+ 
     }
 
     Units getUnits(UNIT_TYPEID unitType) {
@@ -256,7 +268,7 @@ public:
         return false;
     }
 
-    bool TryBuildStructure(AbilityID ability_type_for_structure, UnitTypeID unit_type, Point2D location, Point3D base, double maxDistAllowed, bool isExpansion = false) {
+    bool TryBuildStructure(AbilityID ability_type_for_structure, UnitTypeID unit_type, Point2D location, Point3D base, double minDistFromTownHall, double maxDistFromTownHall, bool isExpansion = false) {
         const ObservationInterface* observation = Observation();
         Units workers = observation->GetUnits(Unit::Alliance::Self, IsUnit(unit_type));
 
@@ -282,9 +294,9 @@ public:
             return false;
         }
         if (!isExpansion) {
-                if (Distance2D(location, Point2D(base.x, base.y)) < 7 || Distance2D(location,Point2D(base.x,base.y))> maxDistAllowed) {
-                    return false;
-                }
+            if ((Distance2D(location, Point2D(base.x, base.y)) < minDistFromTownHall) || (Distance2D(location, Point2D(base.x, base.y)) > maxDistFromTownHall)) {
+                return false;
+            }
         }
         // Check to see if unit can build there
         if (Query()->Placement(ability_type_for_structure, location)) {
@@ -295,15 +307,15 @@ public:
 
     }
 
-    bool TryBuildOnCreep(AbilityID ability_type_for_structure, UnitTypeID unit_type, Point3D base, double maxDistAllowed) {
-        // maxDistAllowed = max distance of the structure from the hatchery(base centre).
+    bool TryBuildOnCreep(AbilityID ability_type_for_structure, UnitTypeID unit_type, Point3D base, double minDistFromTownHall, double maxDistFromTownHall) {
+        // maxDistFromTownHall = max distance of the structure from the hatchery(base centre).
         //for(int i=0;i<1000;i++) {
         float rx = GetRandomScalar();
         float ry = GetRandomScalar();
         Point2D build_location = Point2D(base.x + rx * 15, base.y + ry * 15);
         //cout << ", build_location: " << build_location.x << " " << build_location.y;
         if (Observation()->HasCreep(build_location)) {
-            if (TryBuildStructure(ability_type_for_structure, unit_type, build_location, base, maxDistAllowed, false)) {
+            if (TryBuildStructure(ability_type_for_structure, unit_type, build_location, base, minDistFromTownHall, maxDistFromTownHall, false)) {
                 return true;
             };// false => this is not an expansion
         }
@@ -336,9 +348,9 @@ public:
         return false;
     }
 
-    bool buildSpawningPool(const Unit* buildingUnit, Point3D hatcheryLocation) {
-        return TryBuildOnCreep(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_DRONE,base1,50);
-    }
+    //bool buildSpawningPool(const Unit* buildingUnit, Point3D hatcheryLocation) {
+    //    return TryBuildOnCreep(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_DRONE,base1,10);
+    //}
 
     bool buildExtractor(Point3D targetHatcheryLocation) {
         if (drones.size() == 0)return false;
@@ -381,24 +393,24 @@ public:
 
 
     const Unit* FindNearestMineralPatch(const Point2D& start) {
-    Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
-    float distance = std::numeric_limits<float>::max();
-    const Unit* target = nullptr;
-    for (const auto& u : units) {
-        if (u->unit_type == UNIT_TYPEID::NEUTRAL_MINERALFIELD) {
-            float d = DistanceSquared2D(u->pos, start);
-            if (d < distance) {
-                distance = d;
-                target = u;
+        Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
+        float distance = std::numeric_limits<float>::max();
+        const Unit* target = nullptr;
+        for (const auto& u : units) {
+            if (u->unit_type == UNIT_TYPEID::NEUTRAL_MINERALFIELD) {
+                float d = DistanceSquared2D(u->pos, start);
+                if (d < distance) {
+                    distance = d;
+                    target = u;
+                }
             }
         }
-    }
-    //If we never found one return false;
-    if (distance == std::numeric_limits<float>::max()) {
+        //If we never found one return false;
+        if (distance == std::numeric_limits<float>::max()) {
+            return target;
+        }
         return target;
     }
-    return target;
-}
 
     // Mine the nearest mineral to Town hall.
 // If we don't do this, probes may mine from other patches if they stray too far from the base after building.
@@ -538,6 +550,179 @@ public:
         }
     }
 
+
+    bool trainArmy(AbilityID abilId, UnitTypeID unitId) {
+        Units targetUnits = getUnits(unitId);
+        if (targetUnits.size() == 0)return false;
+        Actions()->UnitCommand(GetRandomEntry(targetUnits) , abilId);
+        return true;
+    }
+
+    bool saturateDrones(int nBases) {
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
+        int idealDroneCnt = 0;
+        for (int i = 0; i < std::min((int)townHalls.size(), nBases); i++) {
+            if (townHalls[i]->build_progress != 1)
+                continue;
+            idealDroneCnt += townHalls[i]->ideal_harvesters;
+        }
+        for (int i = 0; i < std::min((int)geysers.size(), 2 * nBases); i++) {
+            if (geysers[i]->build_progress != 1)
+                continue;
+            idealDroneCnt += geysers[i]->ideal_harvesters;
+        }
+        if (droneCnt < idealDroneCnt)
+        {
+            trainDrone();
+            return false; // not saturated yet.
+        }
+        else return true; // saturated
+        //cout << townHalls.size() << " " << geysers.size() << " " << idealDroneCnt << endl;
+    }
+
+    bool saturateGeysers(int nBases) {
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
+
+        if (geysers.size() < nBases * 2) {
+            buildExtractor(base1);
+            return false;
+        }
+        else return true;
+        
+    }
+
+    void manageOverlords() {
+        // eggs was last calculated in the getValues function
+        int overlordEggs = 0; // overlords on the way.
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_OVERLORD) {
+                    overlordEggs++;
+                }
+            }
+        }
+
+        if ((maxSupply + overlordEggs * 8 - currentSupply) < 5 * (1 + maxSupply / 30))
+            trainOverlord();
+    }
+
+    bool  manageQueens() {
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
+        int idealQueenCnt = 0;
+        for (int i = 0; i < std::min((int)townHalls.size(), nBases); i++) {
+            if (townHalls[i]->build_progress != 1)
+                continue;
+            idealQueenCnt += 3;
+        }
+
+        if (queenCnt < idealQueenCnt)
+        {
+            trainQueen();
+            return false; // not saturated yet.
+        }
+        else return true; // saturated
+    }
+
+    void tryInjectLarva() {
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+
+        injectorQueens.clear();
+        creepQueens.clear();
+
+        int finishedBaseCnt = 0;
+        for (auto& base : townHalls) {
+            if (base->build_progress != 1)
+                continue;
+            finishedBaseCnt++;
+        }
+
+        int queensInTraining = 0;
+        for (auto& el : townHalls) {
+            if (!el->orders.empty()) {
+                if (el->orders.front().ability_id == ABILITY_ID::TRAIN_QUEEN) {
+                    queensInTraining++;
+                }
+            }
+        }
+
+        //cout << "queens: "; for (auto queen : queens)cout << queen->tag << " "; cout << endl;
+        vector<long long>queenTags;
+        for (auto queen:queens) {
+            queenTags.push_back(queen->tag);
+        }
+        sort(queenTags.begin(), queenTags.end());
+
+        for (int i = 0; i < std::min(finishedBaseCnt, queenCnt - queensInTraining); i++) {
+            injectorQueens.push_back(Observation()->GetUnit(queenTags[i])); // error. i have counted birthing queens too
+        }
+        injectorQueenCnt = injectorQueens.size();
+        creepQueenCnt = (queenCnt - queensInTraining - injectorQueenCnt);
+        for (int i = injectorQueenCnt; i < injectorQueenCnt + creepQueenCnt; i++) {
+            creepQueens.push_back(Observation()->GetUnit(queenTags[i]));
+        }
+
+        //cout << "injectorQueens: "<<injectorQueens.size()<<" "; for (auto queen : injectorQueens)cout << queen->tag << " ";
+        //cout << endl;
+
+
+        if (injectorQueens.empty() || hatcheries.empty())
+            return;
+        /*int ptrTownHall = 0;
+        for (int i = 0; i < injectorQueenCnt; i++) {
+            for (; ptrTownHall < townHalls.size(); ptrTownHall++) {
+                if (townHalls[i]->build_progress != 1)
+                    continue;
+                else
+                {
+                    Actions()->UnitCommand(injectorQueens[i], ABILITY_ID::EFFECT_INJECTLARVA, townHalls[ptrTownHall]);
+                    ptrTownHall++;
+                    break;
+                }
+            }
+        }*/
+        for (int i = 0; i < injectorQueenCnt; i++) {
+            Actions()->UnitCommand(injectorQueens[i], ABILITY_ID::EFFECT_INJECTLARVA, townHalls[i]);
+        }
+    }
+
+    void creepQueenPatrol() {
+        for (auto queen : creepQueens) {
+            if (queen->orders.empty()) {
+                Actions()->UnitCommand(creepQueens, ABILITY_ID::GENERAL_PATROL, bases[std::max(0,hatcheryCnt + lairCnt + hiveCnt - 2)]);
+            }
+            if (queen->energy >= 75) {
+                Actions()->UnitCommand(queen, ABILITY_ID::BUILD_CREEPTUMOR, queen->pos);
+                //Actions()->UnitCommand(creepQueens, ABILITY_ID::BUILD_CREEPTUMOR, creepTumorLocation);
+            }
+        }
+    }
+
+    // first zergling only timing attack 
+    void manageZergAttack() {
+        Units enemyUnits = Observation()->GetUnits(Unit::Alliance::Enemy);
+
+        Units armyUnits = Observation()->GetUnits(Unit::Alliance::Enemy);
+        for (auto armyUnit : armyUnits) {
+            if(!armyUnit->orders.empty())
+                if (armyUnit->orders.front().ability_id == ABILITY_ID::ATTACK) {
+                    Actions()->UnitCommand(armyUnit, ABILITY_ID::ATTACK, enemyUnits.front()->pos);
+                }
+        }
+    }
+
+    void TryExpand() {
+        cout << "trying to expand. ";
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+        if (drones.size() > 0)
+        {
+            Actions()->UnitCommand(GetRandomEntry(drones), ABILITY_ID::BUILD_HATCHERY, bases[std::max((int)townHalls.size() - 1, 0)]);
+            cout << drones.size() << endl;;
+        }
+    }
+
     void earlyA() {
         // rally townHall units to base2.
         if (hatcheries.size() > 0)
@@ -622,7 +807,7 @@ public:
 
             // hatchery==2 && droneCnt==18
             if (spawningPoolCnt == 0) {
-                if (minerals >= 150 && buildSpawningPool(drones[0], base1));
+                if (minerals >= 150 && TryBuildOnCreep(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_DRONE, base1, 7, 12));
                 return;
             }
 
@@ -642,48 +827,6 @@ public:
         // EARLY_A PHASE OF VIBE'S ZERG BUILD ENDS.
     }
 
-    bool trainArmy(AbilityID abilId, UnitTypeID unitId) {
-        Units targetUnits = getUnits(unitId);
-        if (targetUnits.size() == 0)return false;
-        Actions()->UnitCommand(GetRandomEntry(targetUnits) , abilId);
-        return true;
-    }
-
-    bool saturateBasesWithDrones(int nBases) {
-        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
-        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
-        int idealDroneCnt = 0;
-        for (int i = 0; i < std::min((int)townHalls.size(), nBases); i++) {
-            if (townHalls[i]->build_progress != 1)
-                continue;
-            idealDroneCnt += townHalls[i]->ideal_harvesters;
-        }
-        for (int i = 0; i < std::min((int)geysers.size(), 2 * nBases); i++) {
-            if (geysers[i]->build_progress != 1)
-                continue;
-            idealDroneCnt += geysers[i]->ideal_harvesters;
-        }
-        if (droneCnt < idealDroneCnt)
-        {
-            trainDrone();
-            return false; // not saturated yet.
-        }
-        else return true; // saturated
-        //cout << townHalls.size() << " " << geysers.size() << " " << idealDroneCnt << endl;
-    }
-
-    bool saturateBasesWithBuildings(int nBases) {
-        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
-        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
-
-        if (geysers.size() < nBases * 2) {
-            buildExtractor(base1);
-            return false;
-        }
-        else return true;
-        
-    }
-
     void earlyB() {
 
         manageOverlords();
@@ -694,18 +837,27 @@ public:
         }
         // build 1 spine crawler at my natural.
         if (spineCrawlerCnt==0) {
-            //cout << "try: " << gameLoop << " ";
-            TryBuildOnCreep(ABILITY_ID::BUILD_SPINECRAWLER,UNIT_TYPEID::ZERG_DRONE,base2, 50);
+            TryBuildOnCreep(ABILITY_ID::BUILD_SPINECRAWLER, UNIT_TYPEID::ZERG_DRONE, base2, 2, 5);
         }
 
-        // currentSupply = 25 
-        if (armySupply <= 15) {
+        // currentSupply = 10 
+        if (armySupply-queenCnt*2 <= 15) {
             manageOverlords();
             trainArmy(ABILITY_ID::TRAIN_ZERGLING,UNIT_TYPEID::ZERG_LARVA);
             return;
         }
-        if (saturateBasesWithDrones(2)) {
-            if (saturateBasesWithBuildings(2)) {
+
+        // armySupply except queens >=15
+        if (!zergTimingAttackSent && armySupply-queenCnt*2>=16) {
+            cout << "zergling attack 1 sent." << endl;
+            Units zerglings = getUnits(UNIT_TYPEID::ZERG_ZERGLING);
+            if(zerglings.size()>0)
+                Actions()->UnitCommand(zerglings, ABILITY_ID::ATTACK, opBase1);
+            zergTimingAttackSent = true;
+        }
+
+        if (saturateDrones(2)) {
+            if (saturateGeysers(2)) {
                 earlyC();
             }
         }
@@ -715,54 +867,54 @@ public:
 
     void earlyC() {
 
-    }
+        if (saturateDrones(2))
+            saturateGeysers(2);
 
-    void manageOverlords() {
-        // eggs was last calculated in the getValues function
-        int overlordEggs = 0; // overlords on the way.
-        for (auto& egg : eggs) {
-            if (!egg->orders.empty()) {
-                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_OVERLORD) {
-                    overlordEggs++;
-                }
-            }
+        if (roachWarrenCnt == 0) {
+            TryBuildOnCreep(ABILITY_ID::BUILD_ROACHWARREN, UNIT_TYPEID::ZERG_DRONE, base1, 7, 12);
+        }
+        if (roachWarrenCnt == 1)
+            TryExpand();
+
+        if (roachWarrenCnt==1 && roachWarrens[0]->build_progress == 1) {
+            // since 2 bases are saturated
+            if (armySupply < 50)
+                trainArmy(ABILITY_ID::TRAIN_ROACH, UNIT_TYPEID::ZERG_LARVA);
         }
 
-        if ((maxSupply + overlordEggs * 8 - currentSupply) < 5 * (1 + maxSupply / 30))
-            trainOverlord();
-    }
+        if (!roachTimingAttack1Sent && armySupply>=50) {
+            Units roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
+            Units zerglings = getUnits(UNIT_TYPEID::ZERG_ZERGLING);
 
-    bool  manageQueens() {
-        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
-        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
-        int idealQueenCnt = 0;
-        for (int i = 0; i < std::min((int)townHalls.size(), nBases); i++) {
-            if (townHalls[i]->build_progress != 1)
-                continue;
-            idealQueenCnt += 3;
+            if (roaches.size() > 0)
+                Actions()->UnitCommand(roaches, ABILITY_ID::ATTACK, opBase1);
+            if(zerglings.size()>0)
+                Actions()->UnitCommand(zerglings, ABILITY_ID::ATTACK, opBase1);
+
+            roachTimingAttack1Sent = true;
         }
 
-        if (queenCnt < idealQueenCnt)
-        {
-            trainQueen();
-            return false; // not saturated yet.
+        if (hatcheryCnt == 3) {
+            TryBuildOnCreep(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_DRONE, base1, 7, 12);
         }
-        else return true; // saturated
+
+        if(hatcheryCnt==3)
+            if(saturateDrones(3))
+                saturateGeysers(3);
     }
 
     virtual void OnStep() final
     {
-        cout << "nQueens: " << queenCnt << endl;
 
         getValues();
 
         if (extractorCnt < 1) {
             earlyA();
         }
-        else if (hatcheryCnt < 3 && roachCnt < 6) {
+        else if (hatcheryCnt<=2 && extractorCnt<=4 && roachWarrenCnt==0) {
             earlyB();
         }
-        else if (hatcheryCnt < 4 && maxSupply < 120 && droneCnt < 120) {
+        else if (hatcheryCnt == 2 && extractorCnt==4) {
             earlyC();
         }
 
@@ -774,7 +926,11 @@ public:
 
         manageQueens();
 
-        //TryInjectLarva();
+        tryInjectLarva();
+
+        creepQueenPatrol();
+
+        manageZergAttack();
 
         //ManageUpgrades();
 
@@ -792,7 +948,7 @@ int main(int argc, char* argv[])
         return 1;
     Bot bot;
     coordinator.SetParticipants({ CreateParticipant(Race::Zerg, &bot),
-                                 CreateComputer(Race::Random, Difficulty::CheatInsane, AIBuild::Rush) });
+                                 CreateComputer(Race::Random, Difficulty::Easy, AIBuild::Rush) });
     coordinator.LaunchStarcraft();
     coordinator.StartGame(sc2::kMapBelShirVestigeLE);
 
@@ -800,8 +956,8 @@ int main(int argc, char* argv[])
 
     while (coordinator.Update())
     {
-        if (bot.gameLoop > 2400)
-            SleepFor(5);
+       /* if (bot.gameLoop > 3000)
+            SleepFor(5);*/
     }
     return 0;
 }
@@ -822,8 +978,3 @@ int main(int argc, char* argv[])
         // larvaCnt = Observation()->GetLarvaCount();
 
 // todo
-// overlords count rises too much
-// spine a bit closer to the base
-// 3 queens per base. injects
-// 1 base saturation -> zergling timing
-// 2 base saturation -> roach timing
