@@ -55,9 +55,9 @@ public:
     const Unit* overlord2;
 
     // EARLY_B
-    int spineCrawlerCnt = 0,sporeCrawlerCnt=0, lairCnt = 0, hiveCnt = 0,
-        roachWarrenCnt = 0, hydraliskDenCnt = 0, evoChamberCnt = 0;
-    Units spineCrawlers, sporeCrawlers, roachWarrens, hydraliskDens, lairs, hives,evoChambers;
+    int spineCrawlerCnt = 0, sporeCrawlerCnt = 0, lairCnt = 0, hiveCnt = 0,
+        roachWarrenCnt = 0, hydraliskDenCnt = 0, evoChamberCnt = 0, queenCnt = 0;
+    Units spineCrawlers, sporeCrawlers, roachWarrens, hydraliskDens, lairs, hives, evoChambers, queens;
 
     // EARLY_C
 
@@ -187,6 +187,13 @@ public:
         sporeCrawlers = getUnits(UNIT_TYPEID::ZERG_SPORECRAWLER);
         sporeCrawlerCnt = sporeCrawlers.size();
 
+        queens = getUnits(UNIT_TYPEID::ZERG_QUEEN);
+        queenCnt = queens.size();
+
+        // townhall is training queens -> queenCnt++ 
+        Units townHalls = 
+
+
 
         // EARLY_C
     }
@@ -198,6 +205,7 @@ public:
 
     bool trainDrone()
     {
+        getValues();
         if (larvaCnt == 0)return false;
         //Units larvas = getUnits(UNIT_TYPEID::ZERG_LARVA);
         Actions()->UnitCommand(GetRandomEntry(larvas), ABILITY_ID::TRAIN_DRONE);
@@ -207,10 +215,45 @@ public:
 
     bool trainOverlord()
     {
-        if (larvaCnt == 0)return false;
+        getValues();
+        if (larvaCnt == 0) 
+            return false;
         Actions()->UnitCommand(GetRandomEntry(larvas), ABILITY_ID::TRAIN_OVERLORD);
         getValues();
         return true;
+    }
+
+    bool trainQueen() {
+        //Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+
+        if (hiveCnt>0) {
+            for (auto& hive : hives) {
+                if (hive->orders.empty()) {
+                    Actions()->UnitCommand(hive, ABILITY_ID::TRAIN_QUEEN);
+                    return true;
+                }
+            }
+        }
+
+        if (lairCnt > 0) {
+            for (auto& lair : lairs) {
+                if (lair->orders.empty()) {
+                    Actions()->UnitCommand(lair, ABILITY_ID::TRAIN_QUEEN);
+                    return true;
+                }
+            }
+        }
+
+        if (hatcheryCnt > 0) {
+            for (auto& hatchery : hatcheries) {
+                if (hatchery->orders.empty()) {
+                    Actions()->UnitCommand(hatchery, ABILITY_ID::TRAIN_QUEEN);
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     bool TryBuildStructure(AbilityID ability_type_for_structure, UnitTypeID unit_type, Point2D location, Point3D base, double maxDistAllowed, bool isExpansion = false) {
@@ -239,7 +282,7 @@ public:
             return false;
         }
         if (!isExpansion) {
-                if (Distance2D(location, Point2D(base.x, base.y)) < 7) { // || Distance2D(location,Point2D(base.x,base.y))> maxDistAllowed) {
+                if (Distance2D(location, Point2D(base.x, base.y)) < 7 || Distance2D(location,Point2D(base.x,base.y))> maxDistAllowed) {
                     return false;
                 }
         }
@@ -297,7 +340,7 @@ public:
         return TryBuildOnCreep(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_DRONE,base1,50);
     }
 
-    bool buildVespeneGeyser(Point3D targetHatcheryLocation) {
+    bool buildExtractor(Point3D targetHatcheryLocation) {
         if (drones.size() == 0)return false;
         // return back if a drone has already been given the order
         for (auto drone : drones) {
@@ -369,12 +412,7 @@ public:
             return;
         }
 
-        for (const auto& geyser : geysers) {
-            if (geyser->assigned_harvesters < geyser->ideal_harvesters) {
-                Actions()->UnitCommand(worker, worker_gather_command, geyser);
-                return;
-            }
-        }
+        
         //Search for a base that is missing workers.
         for (const auto& base : townHalls) {
             //If we have already mined out here skip the base.
@@ -384,6 +422,13 @@ public:
             if (base->assigned_harvesters < base->ideal_harvesters) {
                 valid_mineral_patch = FindNearestMineralPatch(base->pos);
                 Actions()->UnitCommand(worker, worker_gather_command, valid_mineral_patch);
+                return;
+            }
+        }
+
+        for (const auto& geyser : geysers) {
+            if (geyser->assigned_harvesters < geyser->ideal_harvesters) {
+                Actions()->UnitCommand(worker, worker_gather_command, geyser);
                 return;
             }
         }
@@ -405,6 +450,15 @@ public:
         const ObservationInterface* observation = Observation();
         Units townHalls = observation->GetUnits(Unit::Alliance::Self, IsTownHall());
         Units geysers = observation->GetUnits(Unit::Alliance::Self, IsUnit(vespene_building_type));
+
+        // if any idle worker found -> manage it.
+        Units workers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_DRONE));
+
+        for (const auto& worker : workers) {
+            if (worker->orders.empty()) {
+                MineIdleWorkers(worker, worker_gather_command, vespene_building_type);
+            }
+        }
 
         if (townHalls.empty()) {
             return;
@@ -428,10 +482,23 @@ public:
                             return;
                         }
                     }
+                    else if (worker->orders.empty()) {
+                        // idle worker
+                        MineIdleWorkers(worker, worker_gather_command, vespene_building_type);
+                    }
                 }
             }
+            /*else if (base->assigned_harvesters < base->ideal_harvesters) {
+                Units workers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_DRONE));
+
+                for (const auto& worker : workers) {
+                    if (worker->orders.empty()) {
+                        MineIdleWorkers(worker, worker_gather_command, vespene_building_type);
+                    }
+                }
+            }*/
         }
-        Units workers = observation->GetUnits(Unit::Alliance::Self, IsUnit(worker_type));
+        workers = observation->GetUnits(Unit::Alliance::Self, IsUnit(worker_type));
         for (const auto& geyser : geysers) {
             if (geyser->ideal_harvesters == 0 || geyser->build_progress != 1) {
                 continue;
@@ -445,24 +512,29 @@ public:
                             return;
                         }
                     }
-                }
-            }
-            else if (geyser->assigned_harvesters < geyser->ideal_harvesters) {
-                for (const auto& worker : workers) {
-                    if (!worker->orders.empty()) {
-                        //This should move a worker that isn't mining gas to gas
-                        const Unit* target = observation->GetUnit(worker->orders.front().target_unit_tag);
-                        if (target == nullptr) {
-                            continue;
-                        }
-                        if (target->unit_type != vespene_building_type) {
-                            //This should allow them to be picked up by mineidleworkers()
-                            MineIdleWorkers(worker, worker_gather_command, vespene_building_type);
-                            return;
-                        }
+                    else if (worker->orders.empty()) {
+                        MineIdleWorkers(worker, worker_gather_command, vespene_building_type);
                     }
                 }
             }
+            //else if (geyser->assigned_harvesters < geyser->ideal_harvesters) {
+            //    for (const auto& worker : workers) {
+            //        if (!worker->orders.empty()) {
+            //            //This should move a worker that isn't mining gas to gas
+            //            const Unit* target = observation->GetUnit(worker->orders.front().target_unit_tag);
+            //            if (target == nullptr) {
+            //                continue;
+            //            }
+            //            if (target->unit_type != vespene_building_type) {
+            //                //This should allow them to be picked up by mineidleworkers()
+            //                MineIdleWorkers(worker, worker_gather_command, vespene_building_type);
+            //                return;
+            //            }
+            //        }
+            //        else if (worker->orders.empty())
+            //            MineIdleWorkers(worker, worker_gather_command, vespene_building_type);
+            //    }
+            //}
         }
     }
 
@@ -561,7 +633,7 @@ public:
             }
 
             if (extractorCnt == 0) {
-                if (minerals >= 30 && buildVespeneGeyser(base1));
+                if (minerals >= 30 && buildExtractor(base1));
                 return;
             }
         }
@@ -573,11 +645,49 @@ public:
     bool trainArmy(AbilityID abilId, UnitTypeID unitId) {
         Units targetUnits = getUnits(unitId);
         if (targetUnits.size() == 0)return false;
-        Actions()->UnitCommand(GetRandomEntry(targetUnits) , ABILITY_ID::TRAIN_ZERGLING);
+        Actions()->UnitCommand(GetRandomEntry(targetUnits) , abilId);
         return true;
     }
 
+    bool saturateBasesWithDrones(int nBases) {
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
+        int idealDroneCnt = 0;
+        for (int i = 0; i < std::min((int)townHalls.size(), nBases); i++) {
+            if (townHalls[i]->build_progress != 1)
+                continue;
+            idealDroneCnt += townHalls[i]->ideal_harvesters;
+        }
+        for (int i = 0; i < std::min((int)geysers.size(), 2 * nBases); i++) {
+            if (geysers[i]->build_progress != 1)
+                continue;
+            idealDroneCnt += geysers[i]->ideal_harvesters;
+        }
+        if (droneCnt < idealDroneCnt)
+        {
+            trainDrone();
+            return false; // not saturated yet.
+        }
+        else return true; // saturated
+        //cout << townHalls.size() << " " << geysers.size() << " " << idealDroneCnt << endl;
+    }
+
+    bool saturateBasesWithBuildings(int nBases) {
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
+
+        if (geysers.size() < nBases * 2) {
+            buildExtractor(base1);
+            return false;
+        }
+        else return true;
+        
+    }
+
     void earlyB() {
+
+        manageOverlords();
+
         if (droneCnt < 19) {
             trainDrone();
             return;
@@ -590,9 +700,17 @@ public:
 
         // currentSupply = 25 
         if (armySupply <= 15) {
+            manageOverlords();
             trainArmy(ABILITY_ID::TRAIN_ZERGLING,UNIT_TYPEID::ZERG_LARVA);
+            return;
+        }
+        if (saturateBasesWithDrones(2)) {
+            if (saturateBasesWithBuildings(2)) {
+                earlyC();
+            }
         }
 
+        
     }
 
     void earlyC() {
@@ -600,12 +718,42 @@ public:
     }
 
     void manageOverlords() {
-        if (maxSupply - currentSupply < 5 * (maxSupply / 25 + 1))
+        // eggs was last calculated in the getValues function
+        int overlordEggs = 0; // overlords on the way.
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_OVERLORD) {
+                    overlordEggs++;
+                }
+            }
+        }
+
+        if ((maxSupply + overlordEggs * 8 - currentSupply) < 5 * (1 + maxSupply / 30))
             trainOverlord();
+    }
+
+    bool  manageQueens() {
+        Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
+        Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR));
+        int idealQueenCnt = 0;
+        for (int i = 0; i < std::min((int)townHalls.size(), nBases); i++) {
+            if (townHalls[i]->build_progress != 1)
+                continue;
+            idealQueenCnt += 3;
+        }
+
+        if (queenCnt < idealQueenCnt)
+        {
+            trainQueen();
+            return false; // not saturated yet.
+        }
+        else return true; // saturated
     }
 
     virtual void OnStep() final
     {
+        cout << "nQueens: " << queenCnt << endl;
+
         getValues();
 
         if (extractorCnt < 1) {
@@ -624,6 +772,8 @@ public:
 
         ManageWorkers(UNIT_TYPEID::ZERG_DRONE, ABILITY_ID::HARVEST_GATHER, UNIT_TYPEID::ZERG_EXTRACTOR);
 
+        manageQueens();
+
         //TryInjectLarva();
 
         //ManageUpgrades();
@@ -634,22 +784,25 @@ public:
 
 };
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     Coordinator coordinator;
     coordinator.SetStepSize(1);
     if (!coordinator.LoadSettings(argc, argv))
         return 1;
     Bot bot;
-    coordinator.SetParticipants({CreateParticipant(Race::Zerg, &bot),
-                                 CreateComputer(Race::Random, Difficulty::CheatInsane, AIBuild::Rush)});
+    coordinator.SetParticipants({ CreateParticipant(Race::Zerg, &bot),
+                                 CreateComputer(Race::Random, Difficulty::CheatInsane, AIBuild::Rush) });
     coordinator.LaunchStarcraft();
     coordinator.StartGame(sc2::kMapBelShirVestigeLE);
 
 
 
     while (coordinator.Update())
-        SleepFor(5);
+    {
+        if (bot.gameLoop > 2400)
+            SleepFor(5);
+    }
     return 0;
 }
 
@@ -660,6 +813,10 @@ int main(int argc, char *argv[])
 // hatcheryCnt = already built + currently building hatcheries
 // GetUnits(Unit::Alliance::Self,IsUnit(UNIT_TYPEID::ZERG_DRONES)) -> will not give the eggs which are morphing into drones. It returns only the already built drones.
 
+// Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_EXTRACTOR)); gave me 1 geyser
+// Units geysers = Observation()->GetUnits(Unit::Alliance::Self, IsGeyser()); gave me 0 when it should have
+// give 1 too. MAYBE IsGeyser() REFERS TO NEUTRAL GEYSERS ONLY.
+
 // BUGS
 //  //// bug. GetLarvaCnt always returns 0.
         // larvaCnt = Observation()->GetLarvaCount();
@@ -667,5 +824,6 @@ int main(int argc, char *argv[])
 // todo
 // overlords count rises too much
 // spine a bit closer to the base
+// 3 queens per base. injects
 // 1 base saturation -> zergling timing
 // 2 base saturation -> roach timing
