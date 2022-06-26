@@ -34,7 +34,8 @@ public:
     Point3D stagingLocation; // unused for now
 
     // UNITS AND BUILDINGS AND RESOURCES
-    Units overlords, drones, hatcheries, larvas, eggs, spawningPools, extractors;
+    Units larvas, eggs, drones, overlords, zergs, queens, roaches, hydras, lurkers;
+    Units hatcheries, spawningPools, extractors;
     int gameLoop = 0;
     int minerals = 0, vespene = 0;
     int maxSupply = 0, currentSupply = 0, armySupply = 0, armyCnt = 0;
@@ -50,27 +51,32 @@ public:
     bool overlord2Sent = false;
     const Unit* naturalDrone;// drone used to build natural
     bool naturalDroneSent = false; // whether natural drone is sent towards the natural at 200 mineral mark or not.
-    int roachCnt = 0;
     const Unit* overlord1;
     const Unit* overlord2;
 
     // EARLY_B
     int spineCrawlerCnt = 0, sporeCrawlerCnt = 0, lairCnt = 0, hiveCnt = 0,
-        roachWarrenCnt = 0, hydraliskDenCnt = 0, evoChamberCnt = 0, queenCnt = 0;
-    Units spineCrawlers, sporeCrawlers, roachWarrens, hydraliskDens, lairs, hives, evoChambers, queens;
-    bool zergTimingAttackSent = false, roachTimingAttack1Sent = false, roachHydraAttack1Sent = false;
+        roachWarrenCnt = 0, hydraDenCnt = 0, evoChamberCnt = 0, queenCnt = 0;
+    Units spineCrawlers, sporeCrawlers, roachWarrens, hydraDens, lairs, hives, evoChambers;
+    bool zergTimingAttackSent = false;
 
 
     // EARLY_C
     Units injectorQueens,creepQueens;
     int injectorQueenCnt = 0,creepQueenCnt=0;
+    bool roachTimingAttack1Sent = false;
+    int roachCnt = 0;
+
+    // EARLY_D
+    bool roachHydraTimingAttack1Sent = false;
+    int hydraCnt = 0;
 
 
 
 
     virtual void OnGameStart() final
     {
-        cout << endl << endl << "HELLO ASCYRAX." << endl << endl;
+        cout << endl << endl << "HELLO ASCYRAX..................................................." << endl << endl;
 
         //cout << "checking and caching the possible expansions." << endl;
         expansions = search::CalculateExpansionLocations(Observation(), Query());
@@ -93,7 +99,7 @@ public:
 
     virtual void OnGameEnd()
     {
-        cout << endl << endl << "BYE ASCYRAX." << endl << endl;
+        cout << endl << endl << "BYE ASCYRAX....................................................." << endl << endl;
     }
 
 
@@ -156,6 +162,23 @@ public:
         larvaCnt = larvas.size();
         eggCnt = eggs.size();
 
+        lairs = getUnits(UNIT_TYPEID::ZERG_LAIR);
+        lairCnt = lairs.size();
+        for (auto el : hatcheries) {
+            if (!el->orders.empty()) {
+                if (el->orders.front().ability_id == ABILITY_ID::MORPH_LAIR)
+                    lairCnt++;
+            }
+        }
+        hives = getUnits(UNIT_TYPEID::ZERG_HIVE);
+        hiveCnt = hives.size();
+        for (auto el : lairs) {
+            if (!el->orders.empty()) {
+                if (el->orders.front().ability_id == ABILITY_ID::MORPH_HIVE)
+                    hiveCnt++;
+            }
+        }
+
         // conting the drones which are still egg
         for (auto el : eggs) {
             if (!el->orders.empty()) {
@@ -179,8 +202,8 @@ public:
         roachWarrenCnt = roachWarrens.size();
         evoChambers = getUnits(UNIT_TYPEID::ZERG_EVOLUTIONCHAMBER);
         evoChamberCnt = evoChambers.size();
-        hydraliskDens = getUnits(UNIT_TYPEID::ZERG_HYDRALISKDEN);
-        hydraliskDenCnt = hydraliskDens.size();
+        hydraDens = getUnits(UNIT_TYPEID::ZERG_HYDRALISKDEN);
+        hydraDenCnt = hydraDens.size();
         extractors = getUnits(UNIT_TYPEID::ZERG_EXTRACTOR);
         extractorCnt = extractors.size();
 
@@ -572,6 +595,7 @@ public:
                 continue;
             idealDroneCnt += geysers[i]->ideal_harvesters;
         }
+        //cout << droneCnt << " " << idealDroneCnt << endl;
         if (droneCnt < idealDroneCnt)
         {
             trainDrone();
@@ -714,12 +738,23 @@ public:
     }
 
     void TryExpand() {
-        cout << "trying to expand. ";
+        //cout << "trying to expand: " << gameLoop << endl;
         Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
         if (drones.size() > 0)
         {
             Actions()->UnitCommand(GetRandomEntry(drones), ABILITY_ID::BUILD_HATCHERY, bases[std::max((int)townHalls.size() - 1, 0)]);
-            cout << drones.size() << endl;;
+            //cout << drones.size() << endl;;
+        }
+    }
+
+    void buildLair() {
+        if (queenCnt >= 2 && lairCnt+hiveCnt==0) {
+            Actions()->UnitCommand(hatcheries[0], ABILITY_ID::MORPH_LAIR);
+        }
+    }
+    void buildHive() {
+        if (lairCnt > 0 && hiveCnt==0) {
+            Actions()->UnitCommand(lairs[0], ABILITY_ID::MORPH_HIVE);
         }
     }
 
@@ -829,9 +864,18 @@ public:
 
     void earlyB() {
 
+
+        if (queens.size() >= 2) {
+            if (lairCnt + hiveCnt == 0)
+            {
+                buildLair();
+                return;
+            }
+        }
+
         manageOverlords();
 
-        if (droneCnt < 19) {
+        if (droneCnt < 20) {
             trainDrone();
             return;
         }
@@ -841,25 +885,47 @@ public:
         }
 
         // currentSupply = 10 
-        if (armySupply-queenCnt*2 <= 15) {
-            manageOverlords();
-            trainArmy(ABILITY_ID::TRAIN_ZERGLING,UNIT_TYPEID::ZERG_LARVA);
-            return;
+        if (!zergTimingAttackSent) {
+            if (armySupply - queenCnt * 2 <= 15) {
+                manageOverlords();
+                trainArmy(ABILITY_ID::TRAIN_ZERGLING, UNIT_TYPEID::ZERG_LARVA);
+                return;
+            }
         }
 
         // armySupply except queens >=15
-        if (!zergTimingAttackSent && armySupply-queenCnt*2>=16) {
-            cout << "zergling attack 1 sent." << endl;
+        // if all the zergs have finished training, then only send this attack
+        int zergEggs = 0; // zergs which are still being trained
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_ZERGLING) {
+                    zergEggs++;
+                }
+            }
+        }
+        if (!zergTimingAttackSent && armySupply-queenCnt*2>=16 && zergEggs==0) {
+            cout << endl;
+            cout << "ZERG TIMING ATTACK 1 SENT : "<<gameLoop << endl;
+            cout << "zergSupply: " << armySupply - 2 * queenCnt << endl;
+            cout << "queenCnt : " << queenCnt << endl;
+            //cout << "armyCnt: " << armyCnt << endl;
+            //cout << "armySupply: " << armySupply << endl;
+
             Units zerglings = getUnits(UNIT_TYPEID::ZERG_ZERGLING);
+
             if(zerglings.size()>0)
                 Actions()->UnitCommand(zerglings, ABILITY_ID::ATTACK, opBase1);
+
             zergTimingAttackSent = true;
         }
 
-        if (saturateDrones(2)) {
-            if (saturateGeysers(2)) {
-                earlyC();
+        if (zergTimingAttackSent){
+            if (roachWarrenCnt == 0) {
+                TryBuildOnCreep(ABILITY_ID::BUILD_ROACHWARREN, UNIT_TYPEID::ZERG_DRONE, base1, 7, 12);
             }
+            //if (saturateDrones(2)) {
+            //    saturateGeysers(2);
+            //}
         }
 
         
@@ -867,22 +933,50 @@ public:
 
     void earlyC() {
 
-        if (saturateDrones(2))
-            saturateGeysers(2);
-
-        if (roachWarrenCnt == 0) {
-            TryBuildOnCreep(ABILITY_ID::BUILD_ROACHWARREN, UNIT_TYPEID::ZERG_DRONE, base1, 7, 12);
+        if (queens.size() >= 2) {
+            if (lairCnt + hiveCnt == 0)
+            {
+                buildLair();
+                return;
+            }
         }
-        if (roachWarrenCnt == 1)
-            TryExpand();
 
-        if (roachWarrenCnt==1 && roachWarrens[0]->build_progress == 1) {
+        // ENTERED AFTER ROACH WARREN COUNT = 1.
+
+        // if 2 bases could not get saturated in the earlyB phase.
+        if (saturateDrones(2)) {
+            if (saturateGeysers(2)) {
+                if (hatcheries.size() + lairs.size() + hives.size() <= 2)
+                    TryExpand();
+            }
+        }
+        else return; // until the 2nd base gets fully saturated. dont do anything else.
+
+        if (roachWarrens[0]->build_progress == 1) {
             // since 2 bases are saturated
-            if (armySupply < 50)
-                trainArmy(ABILITY_ID::TRAIN_ROACH, UNIT_TYPEID::ZERG_LARVA);
+            if (!roachTimingAttack1Sent) {
+                if (armySupply - queenCnt*2 < 50)
+                    trainArmy(ABILITY_ID::TRAIN_ROACH, UNIT_TYPEID::ZERG_LARVA);
+            }
         }
 
-        if (!roachTimingAttack1Sent && armySupply>=50) {
+        // if all the roaches have finished training, then only send this attack
+        int roachEggs = 0; // roaches which are still being trained
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_ROACH) {
+                    roachEggs++;
+                }
+            }
+        }
+        if (!roachTimingAttack1Sent && armySupply-queenCnt*2>=50 && roachEggs==0) {
+            cout << endl;
+            cout << "ROACH TIMING ATTACK 1 SENT: " << gameLoop << endl;
+            cout << "roachSupply: " << armySupply - 2 * queenCnt << endl;
+            cout << "queenCnt : " << queenCnt << endl;
+            //cout << "armyCnt: " << armyCnt << endl;
+            //cout << "armySupply: " << armySupply << endl;
+
             Units roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
             Units zerglings = getUnits(UNIT_TYPEID::ZERG_ZERGLING);
 
@@ -894,14 +988,91 @@ public:
             roachTimingAttack1Sent = true;
         }
 
-        if (hatcheryCnt == 3) {
-            TryBuildOnCreep(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_DRONE, base1, 7, 12);
+        if (roachTimingAttack1Sent) {
+            if (hydraDenCnt == 0) {
+                TryBuildOnCreep(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_DRONE, base1, 7, 12);
+            }
+            //if (saturateDrones(3)) {
+            //    saturateGeysers(3);
+            //}
+        }
+    }
+
+    void earlyD() {
+
+        if (queens.size() >= 2) {
+            if (lairCnt + hiveCnt == 0)
+            {
+                buildLair();
+                return;
+            }
         }
 
-        if(hatcheryCnt==3)
-            if(saturateDrones(3))
-                saturateGeysers(3);
+        // ENTERED AFTER HYDRALISK-DEN COUNT = 1.
+
+        // if 2 bases could not get saturated in the earlyB phase.
+        if (saturateDrones(3)) {
+            if (saturateGeysers(3)) {
+                if (hatcheries.size() + lairs.size() + hives.size() <= 2)
+                    TryExpand();
+            }
+        }
+        else return; // until 3rd base gets full saturated. dont do anything else.
+ 
+
+
+        roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
+        hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
+        // if all the hydras have finished training, then only send this attack
+        int hydraEggs = 0; // hydras which are still being trained
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_HYDRALISK) {
+                    hydraEggs++;
+                }
+            }
+        }
+        // if all the roaches have finished training, then only send this attack
+        int roachEggs = 0; // roaches which are still being trained
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_ROACH) {
+                    roachEggs++;
+                }
+            }
+        }
+
+        if (hydraDens[0]->build_progress == 1) {
+            // since 2 bases are saturated
+            if (!roachHydraTimingAttack1Sent) {
+                if (hydras.size() + hydraEggs < 35)
+                     trainArmy(ABILITY_ID::TRAIN_HYDRALISK, UNIT_TYPEID::ZERG_LARVA);
+                if (roaches.size() + roachEggs < 30)
+                     trainArmy(ABILITY_ID::TRAIN_ROACH, UNIT_TYPEID::ZERG_LARVA);
+            }
+        }
+
+
+        if (!roachHydraTimingAttack1Sent && armySupply - queenCnt * 2 >= 60 && hydraEggs == 0 && roachEggs==0) {
+            cout << endl;
+            cout << "ROACH + HYDRA TIMING ATTACK 1 SENT: " << gameLoop << endl;
+            cout << "roachSupply: " << armySupply - 2 * queenCnt << endl;
+            cout << "queenCnt : " << queenCnt << endl;
+            //cout << "armyCnt: " << armyCnt << endl;
+            //cout << "armySupply: " << armySupply << endl;
+
+            roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
+            hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
+
+            if (roaches.size() > 0)
+                Actions()->UnitCommand(roaches, ABILITY_ID::ATTACK, opBase1);
+            if (hydras.size() > 0)
+                Actions()->UnitCommand(hydras, ABILITY_ID::ATTACK, opBase1);
+
+            roachHydraTimingAttack1Sent = true;
+        }
     }
+
 
     virtual void OnStep() final
     {
@@ -914,9 +1085,17 @@ public:
         else if (hatcheryCnt<=2 && extractorCnt<=4 && roachWarrenCnt==0) {
             earlyB();
         }
-        else if (hatcheryCnt == 2 && extractorCnt==4) {
+        else if (roachWarrenCnt==1 && hydraDenCnt==0) {
             earlyC();
         }
+        else if (hydraDenCnt == 1) {
+            earlyD();
+        }
+
+
+        buildLair();
+
+        //buildHive();
 
         if (maxSupply >= 28)
             manageOverlords();
@@ -928,7 +1107,7 @@ public:
 
         tryInjectLarva();
 
-        creepQueenPatrol();
+        //creepQueenPatrol();
 
         manageZergAttack();
 
@@ -948,7 +1127,7 @@ int main(int argc, char* argv[])
         return 1;
     Bot bot;
     coordinator.SetParticipants({ CreateParticipant(Race::Zerg, &bot),
-                                 CreateComputer(Race::Random, Difficulty::Easy, AIBuild::Rush) });
+                                 CreateComputer(Race::Random, Difficulty::Hard, AIBuild::Rush) });
     coordinator.LaunchStarcraft();
     coordinator.StartGame(sc2::kMapBelShirVestigeLE);
 
@@ -956,8 +1135,8 @@ int main(int argc, char* argv[])
 
     while (coordinator.Update())
     {
-       /* if (bot.gameLoop > 3000)
-            SleepFor(5);*/
+        if (bot.gameLoop > 1500)
+            SleepFor(15);
     }
     return 0;
 }
