@@ -8,16 +8,15 @@
 
 #include "sc2api/sc2_unit_filters.h"
 
-#define endl std::endl
-#define cout std::cout
-#define vector std::vector
-#define string std::string
-#define pair std::pair
-#define make_pair std::make_pair
-#define unordered_map std::unordered_map
+//#define std::endl std::std::endl
+//#define std::cout std::std::cout
+//#define std::vector std::std::vector
+//#define std::string std::std::string
+//#define std::pair std::std::pair
+//#define std::make_pair std::std::make_pair
+//#define std::unordered_map std::std::unordered_map
 
-//#include "sc2utils/sc2_arg_parser.h"
-
+#include "sc2utils/sc2_arg_parser.h"
 
 
 using namespace sc2;
@@ -31,8 +30,8 @@ public:
     // GAME VARIABLES
 
     // LOCATION AND BASES
-    vector<Point3D> expansions;
-    vector<Point3D>bases;
+    std::vector<Point3D> expansions;
+    std::vector<Point3D>bases;
     int nBases = 0;
     Point3D base1, base2, base3, base4, base5, base6;
     Point3D opBase1, opBase2, opBase3, opBase4, opBase5, opBase6;// opponents starting base
@@ -48,7 +47,7 @@ public:
     int overlordCnt = 0, droneCnt = 0, larvaCnt = 0, eggCnt = 0;
 
     // MISCELLANEOUS
-    vector<UpgradeID> upgrades;
+    std::vector<UpgradeID> upgrades;
 
     // EARLY_A
     bool overlord14Trained = false; // build an overlord at 14 supply
@@ -88,13 +87,17 @@ public:
 
     virtual void OnGameStart() final
     {
-        cout << endl << endl << "HELLO ASCYRAX..................................................." << endl << endl;
+        std::cout << std::endl << std::endl << "HELLO ASCYRAX..................................................." << std::endl << std::endl;
 
-        //cout << "checking and caching the possible expansions." << endl;
+        if (!Observation()) {
+            return;
+        }
+
+        //std::cout << "checking and caching the possible expansions." << std::endl;
         expansions = search::CalculateExpansionLocations(Observation(), Query());
 
         // getting all the bases
-        //cout << "getting all the bases." << endl;
+        //std::cout << "getting all the bases." << std::endl;
         getBases();
         getValues();
     }
@@ -106,12 +109,12 @@ public:
 
     virtual void OnUnitCreated(const Unit *unit)
     {
-        //cout << "A " << UnitTypeToName(unit->unit_type) << " was created during gameLoop: "<<gameLoop<<"." << endl;
+        //std::cout << "A " << UnitTypeToName(unit->unit_type) << " was created during gameLoop: "<<gameLoop<<"." << std::endl;
     }
 
     virtual void OnGameEnd()
     {
-        cout << endl << endl << "BYE ASCYRAX....................................................." << endl << endl;
+        std::cout << std::endl << std::endl << "BYE ASCYRAX....................................................." << std::endl << std::endl;
     }
 
 
@@ -124,11 +127,11 @@ public:
     void getBases() {
         base1 = Observation()->GetStartLocation();
 
-        vector<pair<double, int>>v;
+        std::vector<std::pair<double, int>>v;
         for (int i = 0; i < expansions.size(); i++) {
             if (expansions[i].x == 0 && expansions[i].y == 0)continue;
             double dist = Distance2D(base1, expansions[i]);
-            v.push_back(make_pair(dist, i));
+            v.push_back(std::make_pair(dist, i));
         }
 
         sort(v.begin(), v.end());
@@ -351,7 +354,7 @@ public:
         float rx = GetRandomScalar();
         float ry = GetRandomScalar();
         Point2D build_location = Point2D(base.x + rx * 15, base.y + ry * 15);
-        //cout << ", build_location: " << build_location.x << " " << build_location.y;
+        //std::cout << ", build_location: " << build_location.x << " " << build_location.y;
         if (Observation()->HasCreep(build_location)) {
             if (TryBuildStructure(ability_type_for_structure, unit_type, build_location, base, minDistFromTownHall, maxDistFromTownHall, false)) {
                 return true;
@@ -368,7 +371,7 @@ public:
     // SCOUTING
     void scoutOpponentsNatural(const Unit* scoutingUnit) {
         // assuming opponent's natural is the second farthest expansion from my starting expansion
-        cout << "1st overlord sent to opponent's natural: " << opBase2.x << " " << opBase2.y << " " << opBase2.z << endl;
+        std::cout << "1st overlord sent to opponent's natural: " << opBase2.x << " " << opBase2.y << " " << opBase2.z << std::endl;
         Actions()->UnitCommand(scoutingUnit, ABILITY_ID::SMART,opBase2);
     }
 
@@ -610,14 +613,14 @@ public:
                 continue;
             idealDroneCnt += geysers[i]->ideal_harvesters;
         }
-        //cout << droneCnt << " " << idealDroneCnt << endl;
+        //std::cout << droneCnt << " " << idealDroneCnt << std::endl;
         if (droneCnt < idealDroneCnt)
         {
             trainDrone();
             return false; // not saturated yet.
         }
         else return true; // saturated
-        //cout << townHalls.size() << " " << geysers.size() << " " << idealDroneCnt << endl;
+        //std::cout << townHalls.size() << " " << geysers.size() << " " << idealDroneCnt << std::endl;
     }
 
     bool saturateGeysers(int nBases) {
@@ -687,8 +690,8 @@ public:
             }
         }
 
-        //cout << "queens: "; for (auto queen : queens)cout << queen->tag << " "; cout << endl;
-        vector<long long>queenTags;
+        //std::cout << "queens: "; for (auto queen : queens)std::cout << queen->tag << " "; std::cout << std::endl;
+        std::vector<long long>queenTags;
         for (auto queen:queens) {
             queenTags.push_back(queen->tag);
         }
@@ -703,8 +706,8 @@ public:
             creepQueens.push_back(Observation()->GetUnit(queenTags[i]));
         }
 
-        //cout << "injectorQueens: "<<injectorQueens.size()<<" "; for (auto queen : injectorQueens)cout << queen->tag << " ";
-        //cout << endl;
+        //std::cout << "injectorQueens: "<<injectorQueens.size()<<" "; for (auto queen : injectorQueens)std::cout << queen->tag << " ";
+        //std::cout << std::endl;
 
 
         if (injectorQueens.empty() || hatcheries.empty())
@@ -753,12 +756,12 @@ public:
     }
 
     void TryExpand() {
-        //cout << "trying to expand: " << gameLoop << endl;
+        //std::cout << "trying to expand: " << gameLoop << std::endl;
         Units townHalls = Observation()->GetUnits(Unit::Alliance::Self, IsTownHall());
         if (drones.size() > 0)
         {
             Actions()->UnitCommand(GetRandomEntry(drones), ABILITY_ID::BUILD_HATCHERY, bases[std::max((int)townHalls.size() - 1, 0)]);
-            //cout << drones.size() << endl;;
+            //std::cout << drones.size() << std::endl;;
         }
     }
 
@@ -793,7 +796,7 @@ public:
             Actions()->UnitCommand(hives, ABILITY_ID::RALLY_UNITS, base2);
 
 
-        //cout << "droneCnt:  " << droneCnt << endl;
+        //std::cout << "droneCnt:  " << droneCnt << std::endl;
         // send 1st overlord as scout to opponent's natural
         if (!firstOverlordScoutSent && overlords.size() >= 1)
         {
@@ -929,12 +932,12 @@ public:
             }
         }
         if (!zergTimingAttackSent && armySupply-queenCnt*2>=16 && zergEggs==0) {
-            cout << endl;
-            cout << "ZERG TIMING ATTACK 1 SENT : "<<gameLoop << endl;
-            cout << "zergSupply: " << armySupply - 2 * queenCnt << endl;
-            cout << "queenCnt : " << queenCnt << endl;
-            //cout << "armyCnt: " << armyCnt << endl;
-            //cout << "armySupply: " << armySupply << endl;
+            std::cout << std::endl;
+            std::cout << "ZERG TIMING ATTACK 1 SENT : "<<gameLoop << std::endl;
+            std::cout << "zergSupply: " << armySupply - 2 * queenCnt << std::endl;
+            std::cout << "queenCnt : " << queenCnt << std::endl;
+            //std::cout << "armyCnt: " << armyCnt << std::endl;
+            //std::cout << "armySupply: " << armySupply << std::endl;
 
             Units zerglings = getUnits(UNIT_TYPEID::ZERG_ZERGLING);
 
@@ -995,12 +998,12 @@ public:
             }
         }
         if (!roachTimingAttack1Sent && armySupply-queenCnt*2>=50 && roachEggs==0) {
-            cout << endl;
-            cout << "ROACH TIMING ATTACK 1 SENT: " << gameLoop << endl;
-            cout << "roachSupply: " << armySupply - 2 * queenCnt << endl;
-            cout << "queenCnt : " << queenCnt << endl;
-            //cout << "armyCnt: " << armyCnt << endl;
-            //cout << "armySupply: " << armySupply << endl;
+            std::cout << std::endl;
+            std::cout << "ROACH TIMING ATTACK 1 SENT: " << gameLoop << std::endl;
+            std::cout << "roachSupply: " << armySupply - 2 * queenCnt << std::endl;
+            std::cout << "queenCnt : " << queenCnt << std::endl;
+            //std::cout << "armyCnt: " << armyCnt << std::endl;
+            //std::cout << "armySupply: " << armySupply << std::endl;
 
             Units roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
             Units zerglings = getUnits(UNIT_TYPEID::ZERG_ZERGLING);
@@ -1083,13 +1086,13 @@ public:
 
 
         if (!roachHydraTimingAttack1Sent && armySupply - queenCnt * 2 >= 60 && hydraEggs == 0 && roachEggs==0) {
-            cout << endl;
-            cout << "ROACH + HYDRA TIMING ATTACK 1 SENT: " << gameLoop << endl;
-            cout << "roachSupply: " << roaches.size() * 2 << endl;
-            cout << "hydraSupply: " << hydras.size() * 2 << endl;
-            cout << "queenCnt : " << queenCnt << endl;
-            //cout << "armyCnt: " << armyCnt << endl;
-            //cout << "armySupply: " << armySupply << endl;
+            std::cout << std::endl;
+            std::cout << "ROACH + HYDRA TIMING ATTACK 1 SENT: " << gameLoop << std::endl;
+            std::cout << "roachSupply: " << roaches.size() * 2 << std::endl;
+            std::cout << "hydraSupply: " << hydras.size() * 2 << std::endl;
+            std::cout << "queenCnt : " << queenCnt << std::endl;
+            //std::cout << "armyCnt: " << armyCnt << std::endl;
+            //std::cout << "armySupply: " << armySupply << std::endl;
 
             roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
             hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
@@ -1158,13 +1161,13 @@ public:
 
 
         if (!roachHydraTimingAttack2Sent && armySupply - queenCnt * 2 >= 70 && hydraEggs == 0 && roachEggs == 0) {
-            cout << endl;
-            cout << "ROACH + HYDRA TIMING ATTACK 2 SENT: " << gameLoop << endl;
-            cout << "roachSupply: " << roaches.size() * 2 << endl;
-            cout << "hydraSupply: " << hydras.size() * 2 << endl;
-            cout << "queenCnt : " << queenCnt << endl;
-            //cout << "armyCnt: " << armyCnt << endl;
-            //cout << "armySupply: " << armySupply << endl;
+            std::cout << std::endl;
+            std::cout << "ROACH + HYDRA TIMING ATTACK 2 SENT: " << gameLoop << std::endl;
+            std::cout << "roachSupply: " << roaches.size() * 2 << std::endl;
+            std::cout << "hydraSupply: " << hydras.size() * 2 << std::endl;
+            std::cout << "queenCnt : " << queenCnt << std::endl;
+            //std::cout << "armyCnt: " << armyCnt << std::endl;
+            //std::cout << "armySupply: " << armySupply << std::endl;
 
             roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
             hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
@@ -1233,21 +1236,21 @@ public:
 
 
         if (!roachHydraTimingAttack3Sent && armySupply - queenCnt * 2 >= 90 && hydraEggs == 0 && roachEggs == 0) {
-            cout << endl;
-            cout << "ROACH + HYDRA TIMING ATTACK 3 SENT: " << gameLoop << endl;
-            cout << "roachSupply: " << roaches.size() * 2 << endl;
-            cout << "hydraSupply: " << hydras.size() * 2 << endl;
-            cout << "queenCnt : " << queenCnt << endl;
-            //cout << "armyCnt: " << armyCnt << endl;
-            //cout << "armySupply: " << armySupply << endl;
+            std::cout << std::endl;
+            std::cout << "ROACH + HYDRA TIMING ATTACK 3 SENT: " << gameLoop << std::endl;
+            std::cout << "roachSupply: " << roaches.size() * 2 << std::endl;
+            std::cout << "hydraSupply: " << hydras.size() * 2 << std::endl;
+            std::cout << "queenCnt : " << queenCnt << std::endl;
+            //std::cout << "armyCnt: " << armyCnt << std::endl;
+            //std::cout << "armySupply: " << armySupply << std::endl;
 
             roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
             hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
 
             if (roaches.size() > 0)
-                Actions()->UnitCommand(roaches, ABILITY_ID::ATTACK, opBase1);
+                Actions()->UnitCommand(roaches, ABILITY_ID::ATTACK, opBase2);
             if (hydras.size() > 0)
-                Actions()->UnitCommand(hydras, ABILITY_ID::ATTACK, opBase1);
+                Actions()->UnitCommand(hydras, ABILITY_ID::ATTACK, opBase2);
 
             roachHydraTimingAttack3Sent = true;
         }
@@ -1256,7 +1259,9 @@ public:
 
     virtual void OnStep() final
     {
-
+        if (!Observation()) {
+            return;
+        }
         getValues();
 
         if (extractorCnt < 1) {
@@ -1319,51 +1324,12 @@ public:
     }
 };
 
-// for parseArguments()
-
-
-namespace sc2 {
-
-    struct Arg {
-        string abbreviation_;
-        string fullname_;
-        string description_;
-        bool required_;
-    };
-
-    class ArgParser {
-    public:
-        ArgParser();
-        ArgParser(const string& executable_name);
-        ArgParser(const string& usage, const string& description, const string& example = "");
-
-
-        void AddOptions(const vector<Arg>& options);
-        bool Parse(int argc, char* argv[]);
-
-        // If the arg exists returns true and if a value exists for it fill it.
-        bool Get(const string& identifier, string& value);
-        void PrintHelp();
-        void PrintUsage();
-
-    private:
-        vector<Arg> options_;
-        unordered_map<string, string> abbv_to_full_;
-        unordered_map<string, string> full_to_value_;
-
-        string usage_;
-        string description_;
-        string example_;
-        string executable_name_;
-    };
-
-}
 
 
 // LADDERINTERFACE.H
 // CODE TO DEAL IF ISLADDER = TRUE
 
-static sc2::Difficulty GetDifficultyFromString(string InDifficulty)
+static sc2::Difficulty GetDifficultyFromString(std::string InDifficulty)
 {
     if (InDifficulty == "VeryEasy")
     {
@@ -1409,9 +1375,9 @@ static sc2::Difficulty GetDifficultyFromString(string InDifficulty)
     return sc2::Difficulty::Easy;
 }
 
-static sc2::Race GetRaceFromString(const string& RaceIn)
+static sc2::Race GetRaceFromString(const std::string& RaceIn)
 {
-    string race(RaceIn);
+    std::string race(RaceIn);
     std::transform(race.begin(), race.end(), race.begin(), ::tolower);
 
     if (race == "terran")
@@ -1438,56 +1404,62 @@ struct ConnectionOptions
 {
     int32_t GamePort;
     int32_t StartPort;
-    string ServerAddress;
+    std::string ServerAddress;
     bool ComputerOpponent;
     sc2::Difficulty ComputerDifficulty;
     sc2::Race ComputerRace;
+    std::string OpponentId;
 };
 
 static void ParseArguments(int argc, char *argv[], ConnectionOptions &connect_options)
 {
+    std::cout << "inside parseArguments" << std::endl;
 	sc2::ArgParser arg_parser(argv[0]);
-	arg_parser.AddOptions({
-		{ "-g", "--GamePort", "Port of client to connect to", false },
-		{ "-o", "--StartPort", "Starting server port", false },
-		{ "-l", "--LadderServer", "Ladder server address", false },
-		{ "-c", "--ComputerOpponent", "If we set up a computer oppenent" },
-		{ "-a", "--ComputerRace", "Race of computer oppent" },
-		{ "-d", "--ComputerDifficulty", "Difficulty of computer oppenent" }
+    arg_parser.AddOptions({
+        { "-g", "--GamePort", "Port of client to connect to", false },
+        { "-o", "--StartPort", "Starting server port", false },
+        { "-l", "--LadderServer", "Ladder server address", false },
+        { "-c", "--ComputerOpponent", "If we set up a computer oppenent" },
+        { "-a", "--ComputerRace", "Race of computer oppent" },
+        { "-d", "--ComputerDifficulty", "Difficulty of computer oppenent" },
+        { "-x", "--OpponentId", "Id of computer opponent"}
 		});
 	arg_parser.Parse(argc, argv);
-	string GamePortStr;
+	std::string GamePortStr;
 	if (arg_parser.Get("GamePort", GamePortStr)) {
 		connect_options.GamePort = atoi(GamePortStr.c_str());
 	}
-	string StartPortStr;
+	std::string StartPortStr;
 	if (arg_parser.Get("StartPort", StartPortStr)) {
 		connect_options.StartPort = atoi(StartPortStr.c_str());
 	}
 	arg_parser.Get("LadderServer", connect_options.ServerAddress);
-	string CompOpp;
+	std::string CompOpp;
 	if (arg_parser.Get("ComputerOpponent", CompOpp))
 	{
 		connect_options.ComputerOpponent = true;
-		string CompRace;
+		std::string CompRace;
 		if (arg_parser.Get("ComputerRace", CompRace))
 		{
 			connect_options.ComputerRace = GetRaceFromString(CompRace);
 		}
-		string CompDiff;
+		std::string CompDiff;
 		if (arg_parser.Get("ComputerDifficulty", CompDiff))
 		{
 			connect_options.ComputerDifficulty = GetDifficultyFromString(CompDiff);
 		}
-
 	}
 	else
 	{
 		connect_options.ComputerOpponent = false;
 	}
+    arg_parser.Get("OpponentId", connect_options.OpponentId);
+    std::cout << "exiting ParseArguments" << std::endl;
 }
+
 static void RunBot(int argc, char* argv[], sc2::Agent* Agent, sc2::Race race)
 {
+    std::cout << "inside RunBot" << std::endl;
     ConnectionOptions Options;
     ParseArguments(argc, argv, Options);
 
@@ -1517,13 +1489,14 @@ static void RunBot(int argc, char* argv[], sc2::Agent* Agent, sc2::Race race)
     // Start the game.
 
     // Step forward the game simulation.
-    cout << "Connecting to port " << Options.GamePort << endl;
+    std::cout << "Connecting to port " << Options.GamePort << std::endl;
     coordinator.Connect(Options.GamePort);
     coordinator.SetupPorts(num_agents, Options.StartPort, false);
+    std::cout << "trying to join the game." << std::endl;
     // Step forward the game simulation.
     coordinator.JoinGame();
+    std::cout << " Successfully joined game" << std::endl;
     coordinator.SetTimeoutMS(10000);
-    cout << " Successfully joined game" << endl;
     while (coordinator.Update()) {
     }
 }
@@ -1532,12 +1505,16 @@ int main(int argc, char* argv[])
 {
     // code taken from https://github.com/ddelamare/BotWithAPlan/blob/master/src/BotWithAPlan/Launcher.cpp
 
+    std::cout << "inside main" << std::endl;
+
     bool isLadder = false;
+    std::cout << "argc: " << argc << std::endl;
     for (int i = 0; i < argc; i++) {
-        //LOG(4) << argv[i] << endl;
-        cout << argv[i] << endl;
+        //LOG(4) << argv[i] << std::endl;
+        std::cout << argv[i] << std::endl;
     }
     if (argc > 5)isLadder = true;
+
 
     if (isLadder) {
         RunBot(argc, argv, new Bot(), sc2::Race::Zerg);
@@ -1549,7 +1526,7 @@ int main(int argc, char* argv[])
     Coordinator coordinator;
     if (!coordinator.LoadSettings(argc, argv))
     {
-        cout << "Unable to find or parse settings." << endl;
+        std::cout << "Unable to find or parse settings." << std::endl;
         return 1;
     }
 
@@ -1571,7 +1548,18 @@ int main(int argc, char* argv[])
     coordinator.SetParticipants({ CreateParticipant(Race::Zerg, player_one),
                                  CreateComputer(Race::Random, Difficulty::Hard, AIBuild::RandomBuild) });
     coordinator.LaunchStarcraft();
+    std::vector<char*> customMaps = {
+    "Ladder/(2)Bel'ShirVestigeLE (Void).SC2Map",
+    "Ladder/2000AtmospheresAIE.SC2Map" ,
+    "Ladder/BerlingradAIE.SC2Map" ,
+    "Ladder/BlackburnAIE.SC2Map" ,
+    "Ladder/CuriousMindsAIE.SC2Map" ,
+    "Ladder/Flat482Spawns.SC2Map" ,
+    "Ladder/GlitteringAshesAIE.SC2Map" ,
+    "Ladder/HardwireAIE.SC2Map"
+    };
     coordinator.StartGame(sc2::kMapBelShirVestigeLE);
+    //coordinator.StartGame(GetRandomEntry(customMaps));
 
 
 
