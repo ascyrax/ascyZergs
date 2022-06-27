@@ -14,6 +14,11 @@
 #define string std::string
 #define pair std::pair
 #define make_pair std::make_pair
+#define unordered_map std::unordered_map
+
+//#include "sc2utils/sc2_arg_parser.h"
+
+
 
 using namespace sc2;
 
@@ -67,10 +72,17 @@ public:
     bool roachTimingAttack1Sent = false;
     int roachCnt = 0;
 
+    Units infestPits;
+    int infestPitCnt = 0;
+
     // EARLY_D
     bool roachHydraTimingAttack1Sent = false;
-    int hydraCnt = 0;
-
+    // EARLY_E
+    bool roachHydraTimingAttack2Sent = false;
+    // EARLY_F
+    bool roachHydraTimingAttack3Sent = false;
+    // EARLY_G
+    bool roachHydraTimingAttack4Sent = false;
 
 
 
@@ -230,6 +242,9 @@ public:
 
 
         // EARLY_C
+
+        infestPits = getUnits(UNIT_TYPEID::ZERG_INFESTATIONPIT);
+        infestPitCnt = infestPits.size();
  
     }
 
@@ -749,12 +764,22 @@ public:
 
     void buildLair() {
         if (queenCnt >= 2 && lairCnt+hiveCnt==0) {
-            Actions()->UnitCommand(hatcheries[0], ABILITY_ID::MORPH_LAIR);
+            if(hatcheries.size()>0)
+                Actions()->UnitCommand(hatcheries[0], ABILITY_ID::MORPH_LAIR);
         }
     }
+
     void buildHive() {
-        if (lairCnt > 0 && hiveCnt==0) {
-            Actions()->UnitCommand(lairs[0], ABILITY_ID::MORPH_HIVE);
+        if (hiveCnt==0) {
+            if (infestPitCnt == 0) {
+                if(drones.size()>0)
+                    TryBuildOnCreep(ABILITY_ID::BUILD_INFESTATIONPIT, UNIT_TYPEID::ZERG_DRONE, base1, 7, 10);
+                return;
+            }
+            else if (infestPits[0]->build_progress != 1)return;
+
+            if(lairs.size()>0)
+                Actions()->UnitCommand(lairs[0], ABILITY_ID::MORPH_HIVE);
         }
     }
 
@@ -1007,6 +1032,10 @@ public:
                 return;
             }
         }
+        if (hiveCnt == 0) {
+            buildHive();
+            return;
+        }
 
         // ENTERED AFTER HYDRALISK-DEN COUNT = 1.
 
@@ -1045,9 +1074,9 @@ public:
         if (hydraDens[0]->build_progress == 1) {
             // since 2 bases are saturated
             if (!roachHydraTimingAttack1Sent) {
-                if (hydras.size() + hydraEggs < 35)
+                if (hydras.size() + hydraEggs < 20)
                      trainArmy(ABILITY_ID::TRAIN_HYDRALISK, UNIT_TYPEID::ZERG_LARVA);
-                if (roaches.size() + roachEggs < 30)
+                if (roaches.size() + roachEggs < 15)
                      trainArmy(ABILITY_ID::TRAIN_ROACH, UNIT_TYPEID::ZERG_LARVA);
             }
         }
@@ -1056,7 +1085,8 @@ public:
         if (!roachHydraTimingAttack1Sent && armySupply - queenCnt * 2 >= 60 && hydraEggs == 0 && roachEggs==0) {
             cout << endl;
             cout << "ROACH + HYDRA TIMING ATTACK 1 SENT: " << gameLoop << endl;
-            cout << "roachSupply: " << armySupply - 2 * queenCnt << endl;
+            cout << "roachSupply: " << roaches.size() * 2 << endl;
+            cout << "hydraSupply: " << hydras.size() * 2 << endl;
             cout << "queenCnt : " << queenCnt << endl;
             //cout << "armyCnt: " << armyCnt << endl;
             //cout << "armySupply: " << armySupply << endl;
@@ -1070,6 +1100,156 @@ public:
                 Actions()->UnitCommand(hydras, ABILITY_ID::ATTACK, opBase1);
 
             roachHydraTimingAttack1Sent = true;
+        }
+    }
+
+    void earlyE() {
+        if (queens.size() >= 2) {
+            if (hiveCnt == 0)
+            {
+                buildHive();
+                return;
+            }
+        }
+
+        // ENTERED AFTER HYDRALISK-DEN COUNT = 1.
+
+        // if 2 bases could not get saturated in the earlyB phase.
+        if (saturateDrones(3)) {
+            if (saturateGeysers(3)) {
+                if (hatcheries.size() + lairs.size() + hives.size() <= 3)
+                    TryExpand();
+            }
+        }
+        else return; // until 3rd base gets full saturated. dont do anything else.
+
+
+
+        roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
+        hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
+        // if all the hydras have finished training, then only send this attack
+        int hydraEggs = 0; // hydras which are still being trained
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_HYDRALISK) {
+                    hydraEggs++;
+                }
+            }
+        }
+        // if all the roaches have finished training, then only send this attack
+        int roachEggs = 0; // roaches which are still being trained
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_ROACH) {
+                    roachEggs++;
+                }
+            }
+        }
+
+        if (hydraDens[0]->build_progress == 1) {
+            // since 2 bases are saturated
+            if (!roachHydraTimingAttack2Sent) {
+                if (hydras.size() + hydraEggs < 20)
+                    trainArmy(ABILITY_ID::TRAIN_HYDRALISK, UNIT_TYPEID::ZERG_LARVA);
+                if (roaches.size() + roachEggs < 20)
+                    trainArmy(ABILITY_ID::TRAIN_ROACH, UNIT_TYPEID::ZERG_LARVA);
+            }
+        }
+
+
+        if (!roachHydraTimingAttack2Sent && armySupply - queenCnt * 2 >= 70 && hydraEggs == 0 && roachEggs == 0) {
+            cout << endl;
+            cout << "ROACH + HYDRA TIMING ATTACK 2 SENT: " << gameLoop << endl;
+            cout << "roachSupply: " << roaches.size() * 2 << endl;
+            cout << "hydraSupply: " << hydras.size() * 2 << endl;
+            cout << "queenCnt : " << queenCnt << endl;
+            //cout << "armyCnt: " << armyCnt << endl;
+            //cout << "armySupply: " << armySupply << endl;
+
+            roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
+            hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
+
+            if (roaches.size() > 0)
+                Actions()->UnitCommand(roaches, ABILITY_ID::ATTACK, opBase1);
+            if (hydras.size() > 0)
+                Actions()->UnitCommand(hydras, ABILITY_ID::ATTACK, opBase1);
+
+            roachHydraTimingAttack2Sent = true;
+        }
+    }
+
+    void earlyF() {
+        if (queens.size() >= 2) {
+            if (hiveCnt == 0)
+            {
+                buildHive();
+                return;
+            }
+        }
+
+        // ENTERED AFTER HYDRALISK-DEN COUNT = 1.
+
+        // if 2 bases could not get saturated in the earlyB phase.
+        if (saturateDrones(4)) {
+            if (saturateGeysers(4)) {
+                if (hatcheries.size() + lairs.size() + hives.size() <= 4)
+                    TryExpand();
+            }
+        }
+        else return; // until 3rd base gets full saturated. dont do anything else.
+
+
+
+        roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
+        hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
+        // if all the hydras have finished training, then only send this attack
+        int hydraEggs = 0; // hydras which are still being trained
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_HYDRALISK) {
+                    hydraEggs++;
+                }
+            }
+        }
+        // if all the roaches have finished training, then only send this attack
+        int roachEggs = 0; // roaches which are still being trained
+        for (auto& egg : eggs) {
+            if (!egg->orders.empty()) {
+                if (egg->orders.front().ability_id == ABILITY_ID::TRAIN_ROACH) {
+                    roachEggs++;
+                }
+            }
+        }
+
+        if (hydraDens[0]->build_progress == 1) {
+            // since 2 bases are saturated
+            if (!roachHydraTimingAttack3Sent) {
+                if (hydras.size() + hydraEggs < 25)
+                    trainArmy(ABILITY_ID::TRAIN_HYDRALISK, UNIT_TYPEID::ZERG_LARVA);
+                if (roaches.size() + roachEggs < 25)
+                    trainArmy(ABILITY_ID::TRAIN_ROACH, UNIT_TYPEID::ZERG_LARVA);
+            }
+        }
+
+
+        if (!roachHydraTimingAttack3Sent && armySupply - queenCnt * 2 >= 90 && hydraEggs == 0 && roachEggs == 0) {
+            cout << endl;
+            cout << "ROACH + HYDRA TIMING ATTACK 3 SENT: " << gameLoop << endl;
+            cout << "roachSupply: " << roaches.size() * 2 << endl;
+            cout << "hydraSupply: " << hydras.size() * 2 << endl;
+            cout << "queenCnt : " << queenCnt << endl;
+            //cout << "armyCnt: " << armyCnt << endl;
+            //cout << "armySupply: " << armySupply << endl;
+
+            roaches = Observation()->GetUnits(Unit::Alliance::Self, IsUnit(UNIT_TYPEID::ZERG_ROACH));
+            hydras = getUnits(UNIT_TYPEID::ZERG_HYDRALISK);
+
+            if (roaches.size() > 0)
+                Actions()->UnitCommand(roaches, ABILITY_ID::ATTACK, opBase1);
+            if (hydras.size() > 0)
+                Actions()->UnitCommand(hydras, ABILITY_ID::ATTACK, opBase1);
+
+            roachHydraTimingAttack3Sent = true;
         }
     }
 
@@ -1088,12 +1268,21 @@ public:
         else if (roachWarrenCnt==1 && hydraDenCnt==0) {
             earlyC();
         }
-        else if (hydraDenCnt == 1) {
+        else if (hydraDenCnt == 1 && !roachHydraTimingAttack1Sent) {
             earlyD();
+        }
+        else if (!roachHydraTimingAttack2Sent) {
+            earlyE();
+        }
+        else if (!roachHydraTimingAttack3Sent) {
+            earlyF();
         }
 
 
+
         buildLair();
+        if(hydraDenCnt>0)
+            buildHive();
 
         //buildHive();
 
@@ -1119,15 +1308,268 @@ public:
 
 };
 
+// Set this flag to true if you want to play against your bot.
+static bool PlayerOneIsHuman = false;
+
+class Human : public sc2::Agent {
+public:
+    void OnGameStart() final {
+        Debug()->DebugTextOut("Human");
+        Debug()->SendDebug();
+    }
+};
+
+// for parseArguments()
+
+
+namespace sc2 {
+
+    struct Arg {
+        string abbreviation_;
+        string fullname_;
+        string description_;
+        bool required_;
+    };
+
+    class ArgParser {
+    public:
+        ArgParser();
+        ArgParser(const string& executable_name);
+        ArgParser(const string& usage, const string& description, const string& example = "");
+
+
+        void AddOptions(const vector<Arg>& options);
+        bool Parse(int argc, char* argv[]);
+
+        // If the arg exists returns true and if a value exists for it fill it.
+        bool Get(const string& identifier, string& value);
+        void PrintHelp();
+        void PrintUsage();
+
+    private:
+        vector<Arg> options_;
+        unordered_map<string, string> abbv_to_full_;
+        unordered_map<string, string> full_to_value_;
+
+        string usage_;
+        string description_;
+        string example_;
+        string executable_name_;
+    };
+
+}
+
+
+// LADDERINTERFACE.H
+// CODE TO DEAL IF ISLADDER = TRUE
+
+static sc2::Difficulty GetDifficultyFromString(string InDifficulty)
+{
+    if (InDifficulty == "VeryEasy")
+    {
+        return sc2::Difficulty::VeryEasy;
+    }
+    if (InDifficulty == "Easy")
+    {
+        return sc2::Difficulty::Easy;
+    }
+    if (InDifficulty == "Medium")
+    {
+        return sc2::Difficulty::Medium;
+    }
+    if (InDifficulty == "MediumHard")
+    {
+        return sc2::Difficulty::MediumHard;
+    }
+    if (InDifficulty == "Hard")
+    {
+        return sc2::Difficulty::Hard;
+    }
+    if (InDifficulty == "HardVeryHard")
+    {
+        return sc2::Difficulty::HardVeryHard;
+    }
+    if (InDifficulty == "VeryHard")
+    {
+        return sc2::Difficulty::VeryHard;
+    }
+    if (InDifficulty == "CheatVision")
+    {
+        return sc2::Difficulty::CheatVision;
+    }
+    if (InDifficulty == "CheatMoney")
+    {
+        return sc2::Difficulty::CheatMoney;
+    }
+    if (InDifficulty == "CheatInsane")
+    {
+        return sc2::Difficulty::CheatInsane;
+    }
+
+    return sc2::Difficulty::Easy;
+}
+
+static sc2::Race GetRaceFromString(const string& RaceIn)
+{
+    string race(RaceIn);
+    std::transform(race.begin(), race.end(), race.begin(), ::tolower);
+
+    if (race == "terran")
+    {
+        return sc2::Race::Terran;
+    }
+    else if (race == "protoss")
+    {
+        return sc2::Race::Protoss;
+    }
+    else if (race == "zerg")
+    {
+        return sc2::Race::Zerg;
+    }
+    else if (race == "random")
+    {
+        return sc2::Race::Random;
+    }
+
+    return sc2::Race::Random;
+}
+
+struct ConnectionOptions
+{
+    int32_t GamePort;
+    int32_t StartPort;
+    string ServerAddress;
+    bool ComputerOpponent;
+    sc2::Difficulty ComputerDifficulty;
+    sc2::Race ComputerRace;
+};
+
+static void ParseArguments(int argc, char *argv[], ConnectionOptions &connect_options)
+{
+	sc2::ArgParser arg_parser(argv[0]);
+	arg_parser.AddOptions({
+		{ "-g", "--GamePort", "Port of client to connect to", false },
+		{ "-o", "--StartPort", "Starting server port", false },
+		{ "-l", "--LadderServer", "Ladder server address", false },
+		{ "-c", "--ComputerOpponent", "If we set up a computer oppenent" },
+		{ "-a", "--ComputerRace", "Race of computer oppent" },
+		{ "-d", "--ComputerDifficulty", "Difficulty of computer oppenent" }
+		});
+	arg_parser.Parse(argc, argv);
+	string GamePortStr;
+	if (arg_parser.Get("GamePort", GamePortStr)) {
+		connect_options.GamePort = atoi(GamePortStr.c_str());
+	}
+	string StartPortStr;
+	if (arg_parser.Get("StartPort", StartPortStr)) {
+		connect_options.StartPort = atoi(StartPortStr.c_str());
+	}
+	arg_parser.Get("LadderServer", connect_options.ServerAddress);
+	string CompOpp;
+	if (arg_parser.Get("ComputerOpponent", CompOpp))
+	{
+		connect_options.ComputerOpponent = true;
+		string CompRace;
+		if (arg_parser.Get("ComputerRace", CompRace))
+		{
+			connect_options.ComputerRace = GetRaceFromString(CompRace);
+		}
+		string CompDiff;
+		if (arg_parser.Get("ComputerDifficulty", CompDiff))
+		{
+			connect_options.ComputerDifficulty = GetDifficultyFromString(CompDiff);
+		}
+
+	}
+	else
+	{
+		connect_options.ComputerOpponent = false;
+	}
+}
+static void RunBot(int argc, char* argv[], sc2::Agent* Agent, sc2::Race race)
+{
+    ConnectionOptions Options;
+    ParseArguments(argc, argv, Options);
+
+    sc2::Coordinator coordinator;
+    // if (!coordinator.LoadSettings(argc, argv)) {
+    //	return;
+    // }
+
+    // Add the custom bot, it will control the players.
+    int num_agents;
+    if (Options.ComputerOpponent)
+    {
+        num_agents = 1;
+        coordinator.SetParticipants({
+            CreateParticipant(race, Agent),
+            CreateComputer(Options.ComputerRace, Options.ComputerDifficulty)
+            });
+    }
+    else
+    {
+        num_agents = 2;
+        coordinator.SetParticipants({
+            CreateParticipant(race, Agent),
+            });
+    }
+
+    // Start the game.
+
+    // Step forward the game simulation.
+    cout << "Connecting to port " << Options.GamePort << endl;
+    coordinator.Connect(Options.GamePort);
+    coordinator.SetupPorts(num_agents, Options.StartPort, false);
+    // Step forward the game simulation.
+    coordinator.JoinGame();
+    coordinator.SetTimeoutMS(10000);
+    cout << " Successfully joined game" << endl;
+    while (coordinator.Update()) {
+    }
+}
+
 int main(int argc, char* argv[])
 {
+    // code taken from https://github.com/ddelamare/BotWithAPlan/blob/master/src/BotWithAPlan/Launcher.cpp
+
+    bool isLadder = false;
+    for (int i = 0; i < argc; i++) {
+        //LOG(4) << argv[i] << endl;
+        cout << argv[i] << endl;
+    }
+    if (argc > 5)isLadder = true;
+
+    if (isLadder) {
+        RunBot(argc, argv, new Bot(), sc2::Race::Zerg);
+        return 0;
+    }
+
+    // if not a ladder match. eg. local game
+
     Coordinator coordinator;
-    coordinator.SetStepSize(1);
     if (!coordinator.LoadSettings(argc, argv))
+    {
+        cout << "Unable to find or parse settings." << endl;
         return 1;
-    Bot bot;
-    coordinator.SetParticipants({ CreateParticipant(Race::Zerg, &bot),
-                                 CreateComputer(Race::Random, Difficulty::Hard, AIBuild::Rush) });
+    }
+
+    coordinator.SetStepSize(1);
+    coordinator.SetMultithreaded(true);
+
+    if (PlayerOneIsHuman) {
+        coordinator.SetRealtime(true);
+    }
+
+    Bot bot1;
+    Human human_bot;
+    Agent* player_one = &bot1;
+    if (PlayerOneIsHuman) {
+        player_one = &human_bot;
+    }
+    
+
+    coordinator.SetParticipants({ CreateParticipant(Race::Zerg, player_one),
+                                 CreateComputer(Race::Random, Difficulty::Hard, AIBuild::RandomBuild) });
     coordinator.LaunchStarcraft();
     coordinator.StartGame(sc2::kMapBelShirVestigeLE);
 
@@ -1135,8 +1577,8 @@ int main(int argc, char* argv[])
 
     while (coordinator.Update())
     {
-        if (bot.gameLoop > 1500)
-            SleepFor(15);
+        //if (bot.gameLoop > 1500)
+        //    SleepFor(15);
     }
     return 0;
 }
@@ -1157,3 +1599,7 @@ int main(int argc, char* argv[])
         // larvaCnt = Observation()->GetLarvaCount();
 
 // todo
+
+
+
+// ALT + ENTER = FULLSCREEN (for sc2 bot window)
